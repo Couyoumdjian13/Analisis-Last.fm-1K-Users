@@ -1,8 +1,17 @@
-cat <<EOF > .gitignore
-# Ignorar datasets pesados y comprimidos
+# Datasets pesados y derivados
 *.tsv
 *.parquet
 *.tar.gz
 data/
+
+# Entornos Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Jupyter
 .ipynb_checkpoints/
-EOF
+
+# WSL / Windows
+*:Zone.Identifier
