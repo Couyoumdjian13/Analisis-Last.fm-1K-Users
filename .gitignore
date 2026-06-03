@@ -1,0 +1,8 @@
+cat <<EOF > .gitignore
+# Ignorar datasets pesados y comprimidos
+*.tsv
+*.parquet
+*.tar.gz
+data/
+.ipynb_checkpoints/
+EOF
