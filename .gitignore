@@ -15,3 +15,6 @@ __pycache__/
 
 # WSL / Windows
 *:Zone.Identifier
+
+# Word: el .docx se regenera desde el .md y se edita localmente, no se versiona
+*.docx
