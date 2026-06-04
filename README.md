@@ -1,9 +1,5 @@
 # Repeat-Aware Recommendation — IIC3633 Grupo 32
 
-[![Course](https://img.shields.io/badge/IIC3633-Sistemas%20Recomendadores%202026--1-blue)]()
-[![Status](https://img.shields.io/badge/etapa-H2%20Midterm-orange)]()
-[![Python](https://img.shields.io/badge/python-3.12-yellow)]()
-
 Repositorio del proyecto final del curso **IIC3633 Sistemas Recomendadores** (semestre 2026-1, Pontificia Universidad Católica de Chile). Aborda el problema de **recomendación de ítems repetidos** (*Repeat-Aware Recommendation*): aprender, a partir del historial temporal de interacciones, cuándo un usuario tendrá mayor probabilidad de repetir el consumo de un ítem ya visitado en lugar de explorar uno nuevo.
 
 **Equipo:** Pedro Munita · José Racioppi · Tomás Couyoumdjian.
