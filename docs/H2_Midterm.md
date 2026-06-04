@@ -52,7 +52,27 @@ Para cada interacción potencial se construye un vector de *features* $\mathbf{f
 * $f_3 = \log\!\left(1 + \overline{\Delta}_u\right)$ : log-intervalo medio entre repeticiones del usuario.
 * $f_4 = |H_u^{\text{30d}}|$ : número de interacciones en la ventana móvil de 30 días.
 
-El clasificador estima $P(\text{modo} = \text{repeat} \mid \mathbf{f}_{u,t})$; si supera un umbral $\theta$ (ajustado por validación cruzada para optimizar nDCG@10), se delega en `SimpleRepeat`, en caso contrario en el modelo colaborativo. La salida final es una lista top-K formada por la unión de ambos sub-rankings, ponderada por la probabilidad estimada. Este diseño está inspirado en arquitecturas de *gating* utilizadas en sistemas de recomendación sensibles al contexto.
+El clasificador estima $P(\text{modo} = \text{repeat} \mid \mathbf{f}_{u,t})$; si supera un umbral $\theta$ (ajustado por validación cruzada para optimizar nDCG@10), se delega en `SimpleRepeat`, en caso contrario en el modelo colaborativo. La salida final es una lista top-K formada por la unión de ambos sub-rankings, ponderada por la probabilidad estimada. Este diseño está inspirado en arquitecturas de *gating* utilizadas en sistemas de recomendación sensibles al contexto. La arquitectura propuesta se resume en el siguiente diagrama:
+
+```
+                features f_u,t  (r_u, τ_u,t, log Δ̄_u, |H_u^30d|)
+                       │
+                       ▼
+           ┌────────────────────────┐
+           │  Clasificador          │
+           │  P(repeat | f_u,t)     │   ──►  umbral θ
+           └────────┬───────────────┘
+                    │
+        ┌───────────┴────────────┐
+        │ P ≥ θ                  │ P < θ
+        ▼                        ▼
+  SimpleRepeat-Recency        Filtrado colaborativo
+  (historial reciente)        (iALS sobre matriz U×I)
+        │                        │
+        └────────────┬───────────┘
+                     ▼
+        top-K final (union ponderada)
+```
 
 ### 1.4 Baseline moderno repeat-aware: PISA (RecSys 2024)
 
@@ -130,6 +150,29 @@ Esta dualidad —masa concentrada a corto plazo + cola larga— es la justificac
 
 La distribución de la tasa de repetición individual sobre los 100 usuarios del subset (media $0.604$, std $0.207$, mínimo $0.032$, máximo $0.982$) confirma que el balance repeat / explore es **fuertemente heterogéneo**. Existen usuarios "exploradores" (3 % de repeticiones) coexistiendo con usuarios "loopers" (98 % de repeticiones). Ningún modelo de política única —ni un colaborativo puro, ni un SimpleRepeat puro— podría operar eficientemente sobre esta variabilidad. Este hallazgo es, a su vez, la justificación empírica del **modelo híbrido con ruteo aprendido** propuesto en §1.3: la decisión repeat vs. explore debe condicionarse en *features* del usuario, no asumirse global.
 
+### 3.4 Frecuencia histórica vs. probabilidad de reaparición (OE1 del H1)
+
+El objetivo específico OE1 del H1 incluyó cuantificar la correlación entre la frecuencia histórica de un ítem y su probabilidad de ser repetido. Operacionalizamos esto con el siguiente procedimiento: para cada usuario partimos su historial cronológico en mitad pasada y mitad futura, calculamos $\text{freq\_past}(u, i)$ = número de plays del ítem $i$ en la primera mitad, e indicador $\text{reappears}(u, i) \in \{0, 1\}$ = 1 si $i$ vuelve a aparecer en la segunda mitad. Computamos el coeficiente de **Spearman** *pooled* sobre los 64 018 pares $(u, i)$ con $\text{freq\_past} \geq 1$:
+
+$$
+\rho_{\text{Spearman}}\!\left(\text{freq\_past},\,\text{reappears}\right) = 0.284,\quad p < 10^{-300},\quad n = 64\,018.
+$$
+
+La correlación es **positiva pero moderada-débil**: la frecuencia histórica *sí* es señal, pero explica una fracción menor de la varianza del fenómeno de reaparición. Este resultado es consistente con el contraste empírico de §4.2 entre `SimpleRepeat-Freq` (Recall@10 = 0) y `SimpleRepeat-Recency` (Recall@10 = 0.09): la frecuencia por sí sola pierde la señal temporal, y un predictor competitivo requiere combinar frecuencia con recencia (lo que harán el T-BPR de §1.2 y el modelo híbrido de §1.3).
+
+### 3.5 Figuras del análisis descriptivo
+
+Las figuras siguientes resumen los tres ejes del EDA discutidos en §3.1–3.3. Se generan ejecutando `notebooks/eda_figures.py` sobre el subset H1; los archivos PNG correspondientes están versionados en `docs/figures/`.
+
+![Distribución de repeat ratio por usuario](figures/fig_repeat_ratio.png)
+*Figura 1. Repeat ratio por usuario (n = 100). La media (línea roja) coincide con la tasa global del 60.43 % discutida en §3.1; la dispersión visualiza la heterogeneidad de §3.3.*
+
+![Intervalos entre repeticiones](figures/fig_repeat_intervals.png)
+*Figura 2. Distribución de log(1 + intervalo) entre repeticiones (n = 87 985). Las líneas verticales marcan $p_{25} \approx 1.74$ h y la mediana $\approx 27$ h. La masa concentrada a la izquierda materializa la "localidad temporal" / ráfagas de §3.2.*
+
+![Ítems únicos por usuario](figures/fig_plays_per_user.png)
+*Figura 3. Número de ítems únicos por usuario en el subset H1. La mediana ≈ 1 105 sobre 2 000 plays por usuario confirma que el subset captura usuarios con catálogos personalizados amplios, lo que explica el bajo desempeño de MostPopular reportado en §4.3 Hallazgo 4.*
+
 ---
 
 ## 4. Experimentación Preliminar y Resultados Intermedios
@@ -167,7 +210,7 @@ A los tres baselines comprometidos en H1 se añade una cuarta variante, **`Simpl
 
 ### 4.4 Compromiso para la entrega final
 
-Para H3 se entrenarán y evaluarán los modelos avanzados (T-BPR, Modelo Híbrido, RepeatNet vía RecBole y PISA) sobre los dos datasets (§5.2), reportando las mismas cuatro métricas más intervalos de confianza al 95 % por *bootstrap* sobre usuarios. El nivel de `SimpleRepeat-Recency` (Recall@10 = 0.09) constituye el piso a superar para que el aporte de los modelos avanzados sea metodológicamente significativo.
+Para H3 se entrenarán y evaluarán los modelos avanzados (T-BPR, Modelo Híbrido, RepeatNet vía RecBole y PISA) sobre los dos datasets (§5.4), reportando las mismas cuatro métricas más intervalos de confianza al 95 % por *bootstrap* sobre usuarios. El nivel de `SimpleRepeat-Recency` (Recall@10 = 0.09) constituye el piso a superar para que el aporte de los modelos avanzados sea metodológicamente significativo.
 
 ---
 
@@ -177,7 +220,22 @@ Para H3 se entrenarán y evaluarán los modelos avanzados (T-BPR, Modelo Híbrid
 
 En la etapa exploratoria de H1, los baselines se evaluaron con un split aleatorio 80/20 por usuario y se filtraban los ítems del historial del catálogo de candidatos. Ambas decisiones fueron incompatibles con el paradigma repeat-aware: el split aleatorio diluye el orden temporal y el filtro de historial penaliza por construcción a los modelos que sugieren repeticiones (la razón por la cual `SimpleRepeat` puntuaba 0 en H1). Estas dos inconsistencias se resolvieron en esta etapa migrando la rutina de evaluación a un módulo independiente (`src/evaluation.py`), reproducible y compartido por todos los modelos del proyecto. La diferencia operativa explica la ausencia de comparación directa con los números reportados en H1.
 
-### 5.2 Promoción de Amazon Reviews — Grocery & Gourmet Food a track paralelo
+### 5.2 Revisión de los criterios de éxito del Midterm declarados en H1
+
+El H1 fijó como criterios de éxito para esta entrega: (i) "RepeatNet entrenado y convergente sobre Last.fm 1K, con pérdida decreciente"; (ii) "Recall@10 superior en al menos 5 % al mejor baseline"; (iii) "análisis de sensibilidad a hiperparámetros"; (iv) "código reproducible con README". Realizamos un balance honesto:
+
+* (iv) **Código reproducible + README:** cumplido (pipeline completo en `src/`, instrucciones en `README.md`).
+* (i)–(iii) **RepeatNet entrenado + ganancia +5 pp + ablación de hiperparámetros:** **no cumplido en esta etapa.** El esfuerzo de ingeniería se redirigió hacia (a) consolidar un pipeline de evaluación correcto bajo el protocolo LOO temporal (cuyo error en H1 invalidaba comparaciones de cualquier modelo), (b) reescribir el preprocesamiento para hacerlo ejecutable en máquinas con < 16 GB de RAM, y (c) formalizar matemáticamente las dos contribuciones originales del grupo (T-BPR y Modelo Híbrido). Reconocemos la desviación respecto al compromiso explícito de H1 y la reasignamos al cronograma de H3 (§5.6).
+
+### 5.3 Pivote metodológico: T-BPR y Modelo Híbrido como contribución principal
+
+En H1, RepeatNet figuraba como **el** método nuevo a desarrollar. Tras profundizar en la literatura y en los hallazgos empíricos de §3 y §4, decidimos elevar **T-BPR y el Modelo Híbrido** —ambos de diseño propio del grupo— al estatus de contribuciones principales del proyecto, relegando RepeatNet [Ren et al., 2019] y PISA [Tran et al., 2024] al rol de *baselines* avanzados. La justificación es triple:
+
+1. **Aporte académico.** Reimplementar RepeatNet replicaría literatura existente sin contribución original; T-BPR introduce un esquema de muestreo negativo dependiente del tiempo no presentado, hasta donde llegamos, en la literatura consultada.
+2. **Alineación con los hallazgos empíricos.** El §3.2 cuantificó una ventana óptima de repetición por usuario y el §3.4 demostró que la frecuencia es señal débil aislada ($\rho = 0.284$). Ambos diagnósticos motivan directamente el diseño de T-BPR y del Modelo Híbrido propuestos.
+3. **Mitigación de riesgo.** Para RepeatNet y PISA usaremos las implementaciones de referencia (RecBole y el repositorio de Deezer respectivamente), reduciendo el riesgo de bugs y dejando esfuerzo para el modelo propio.
+
+### 5.4 Promoción de Amazon Reviews — Grocery & Gourmet Food a track paralelo
 
 En H1, el dataset de Amazon Grocery fue declarado como **alternativa de respaldo**. Atendiendo a la observación del corrector y reconociendo que el aporte metodológico principal del proyecto reside en el **contraste de dominios**, se promueve a track experimental paralelo:
 
@@ -186,13 +244,13 @@ En H1, el dataset de Amazon Grocery fue declarado como **alternativa de respaldo
 | Last.fm 1K | Alta frecuencia, ráfagas cortas | ≈ 27 h (verificado, §3.2) |
 | Amazon Grocery | Baja frecuencia, recompra estacional | semanas a meses (esperado) |
 
-El objetivo es demostrar que los modelos repeat-aware propuestos (T-BPR, Híbrido, PISA) generalizan a ambos extremos del espectro temporal de repetición, no únicamente al caso musical en el que se diseñaron. Music4All, sugerido por el corrector, queda como dataset de validación opcional si los tiempos lo permiten.
+**Estado a la fecha de esta entrega.** Los resultados experimentales reportados en §4 corresponden únicamente a Last.fm 1K. El procesamiento de Amazon Grocery (descarga, normalización al esquema `user_id × item_id × timestamp`, replicación del subset por *power users*) está agendado como primera tarea de la planificación a H3 (§5.6, semana del 06–12 jun). El objetivo es demostrar que los modelos repeat-aware propuestos (T-BPR, Híbrido, PISA) generalizan a ambos extremos del espectro temporal de repetición, no únicamente al caso musical en el que se diseñaron. Music4All, sugerido por el corrector como dataset musical adicional, queda como validación opcional si los tiempos lo permiten.
 
-### 5.3 Cuello de botella computacional y reproducibilidad
+### 5.5 Cuello de botella computacional y reproducibilidad
 
 La carga del TSV original de 2.5 GB en pandas saturaba la memoria RAM en máquinas con menos de 16 GB, impidiendo iteración rápida durante el EDA. Se diagnosticó como un problema de representación: (i) inferencia de dtypes `object` para columnas string sin necesidad, (ii) carga de columnas innecesarias (`artist_id`, `track_id`). La solución implementada combina lectura *chunked* en dos pasadas con escritura incremental a Parquet (`pyarrow`), reduciendo el *peak* de memoria a < 1 GB y el tiempo de carga posterior (Parquet vs. TSV) en aproximadamente dos órdenes de magnitud. El pipeline completo, junto con `requirements.txt` y el `README`, se encuentra modularizado y versionado en el repositorio enlazado.
 
-### 5.4 Cronograma actualizado hacia H3
+### 5.6 Cronograma actualizado hacia H3
 
 | Sem | Fechas | Actividad | Responsable |
 |---|---|---|---|
@@ -201,11 +259,6 @@ La carga del TSV original de 2.5 GB en pandas saturaba la memoria RAM en máquin
 | 3 | 20–26 Jun | Modelo Híbrido: entrenamiento del clasificador de ruteo, integración con iALS y `SimpleRepeat-Recency`; ablación de *features* | P. Munita |
 | 4 | 27 Jun – 02 Jul | Ejecución de RepeatNet (RecBole) y PISA sobre ambos datasets; tabla comparativa final con intervalos de confianza al 95 % | Todos |
 | 5 | 03 – 06 Jul | Redacción del paper H3 (formato ACM, máx. 8 páginas); preparación del póster para la sesión presencial | Todos |
-
-### 5.5 Riesgos asumidos
-
-* **PISA y RepeatNet** son los componentes con mayor incertidumbre de implementación. El uso de RecBole para RepeatNet y de la implementación de referencia de Deezer para PISA mitiga este riesgo, pero ambos requieren adaptación al pipeline de evaluación propio.
-* **Amazon Grocery** requiere replicar todo el pipeline de preprocesamiento. Se prevé reutilizar la arquitectura *chunked* + Parquet documentada en §5.3 para acelerar esta etapa.
 
 ---
 
@@ -222,3 +275,12 @@ La carga del TSV original de 2.5 GB en pandas saturaba la memoria RAM en máquin
 [5] Zhao, W. X., et al. (2021). *RecBole: Towards a Unified, Comprehensive and Efficient Framework for Recommendation Algorithms.* In **CIKM '21**.
 
 [6] Anderson, J. R., & Lebiere, C. (1998). *The Atomic Components of Thought.* Lawrence Erlbaum Associates. (Fundamento teórico de ACT-R utilizado por PISA.)
+
+---
+
+## Anexo A — Riesgos asumidos y plan de mitigación
+
+* **PISA y RepeatNet** son los componentes con mayor incertidumbre de implementación. El uso de RecBole para RepeatNet [5] y de la implementación de referencia de Deezer para PISA [1] mitiga este riesgo, pero ambos requieren adaptación al pipeline de evaluación propio (`src/evaluation.py`). Plan de mitigación: integración progresiva en semana 4 del cronograma (§5.6), con *fallback* a una versión simplificada de PISA (Transformer secuencial con decay ACT-R) en caso de bloqueo con la implementación de referencia.
+* **Amazon Grocery** requiere replicar todo el pipeline de preprocesamiento. Se prevé reutilizar la arquitectura *chunked* + Parquet documentada en §5.5 para acelerar esta etapa; estimación de esfuerzo: 2–3 días de un integrante.
+* **Tamaño de muestra para LOO temporal:** la evaluación reportada en §4 usa 100 puntos de test (uno por usuario del subset H1). Para H3 escalaremos a los 992 usuarios del dataset completo y agregaremos intervalos de confianza al 95 % por *bootstrap* a nivel de usuario, reduciendo el error de muestreo en las comparaciones entre modelos.
+* **Modelos avanzados y posible necesidad de GPU.** El entrenamiento de PISA y RepeatNet sobre el dataset completo podría requerir GPU para tiempos de iteración razonables. Si no se dispone de GPU local, evaluaremos Google Colab gratuito o el cluster de la universidad.

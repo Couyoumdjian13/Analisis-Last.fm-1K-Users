@@ -45,6 +45,7 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
 | Baselines repeat-aware (4 variantes) | ✅ Implementados con interfaz común | [`src/models/baselines.py`](src/models/baselines.py) |
 | Pipeline de evaluación leave-one-out temporal | ✅ Implementado y reproducible | [`src/evaluation.py`](src/evaluation.py) |
 | Resultados intermedios de baselines | ✅ Calculados sobre subset H1 | `data/baselines_results.csv`, `data/baselines_hits.csv` |
+| Figuras del EDA y correlación frecuencia ↔ reaparición (OE1) | ✅ Reproducible | [`notebooks/eda_figures.py`](notebooks/eda_figures.py), [`docs/figures/`](docs/figures/) |
 | Informe H2 (Markdown + Word) | ✅ Redactado | [`docs/H2_Midterm.md`](docs/H2_Midterm.md), [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx) |
 | **Temporal BPR** (modelo nuevo) | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.2 |
 | **Modelo Híbrido Repeat/Explore** | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.3 |
@@ -63,6 +64,7 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
   * El 50 % de las repeticiones ocurre dentro de las primeras 27 h → **localidad temporal / ráfagas de escucha**.
   * La cola larga revela ítems "favoritos persistentes" que reaparecen meses después.
 * **Heterogeneidad inter-usuario:** la tasa de repetición individual varía entre 3.2 % y 98.2 % (std 0.207). Coexisten usuarios "exploradores" y "loopers" en el mismo dataset.
+* **Correlación frecuencia histórica ↔ probabilidad de reaparición (OE1):** Spearman ρ = 0.284 (p < 10⁻³⁰⁰, n = 64 018 pares (usuario, ítem) con split 50/50 temporal). La frecuencia *sí* es señal, pero moderada-débil: explica una fracción menor de la varianza del fenómeno de reaparición, lo que motiva combinar frecuencia con recencia en los modelos avanzados.
 
 ### De la evaluación de baselines bajo LOO temporal
 
@@ -95,7 +97,8 @@ Analisis-Last.fm-1K-Users/
 │   └── baselines_hits.csv                                 # Detalle por hit (user_id, rank)
 ├── notebooks/
 │   ├── preprocessing.ipynb              # Notebook original de H1 (exploratorio)
-│   └── preprocessing.py                 # Pipeline chunked reproducible (2 pasadas, < 1 GB RAM)
+│   ├── preprocessing.py                 # Pipeline chunked reproducible (2 pasadas, < 1 GB RAM)
+│   └── eda_figures.py                   # Regenera figuras del EDA y la correlación Spearman
 ├── src/
 │   ├── models/
 │   │   ├── __init__.py
@@ -106,7 +109,8 @@ Analisis-Last.fm-1K-Users/
 │   └── run_baselines.py                 # Runner reproducible (genera los CSV de data/)
 ├── docs/
 │   ├── H2_Midterm.md                    # Informe intermedio H2 (fuente Markdown)
-│   └── H2_Midterm.docx                  # Informe intermedio H2 (versión Word editable)
+│   ├── H2_Midterm.docx                  # Informe intermedio H2 (versión Word editable, .gitignored)
+│   └── figures/                         # PNGs del EDA referenciados desde el informe
 ├── README.md                            # Este archivo
 ├── requirements.txt                     # pandas, numpy, pyarrow
 └── .gitignore                           # Excluye data/, .venv/, *.docx, *:Zone.Identifier
@@ -219,7 +223,15 @@ Genera en `data/`:
 
 Los números reproducidos deben coincidir con la tabla de §3 de este README.
 
-**Paso 3 — Regenerar el informe en Word (opcional):**
+**Paso 3 — Regenerar figuras del EDA y correlación de Spearman (≈ 10 segundos):**
+
+```bash
+python notebooks/eda_figures.py
+```
+
+Genera 3 PNGs en `docs/figures/` (repeat ratio, intervalos, ítems únicos) e imprime el coeficiente de Spearman entre frecuencia histórica y probabilidad de reaparición (operacionalización del OE1 del H1).
+
+**Paso 4 — Regenerar el informe en Word (opcional):**
 
 ```bash
 pip install pypandoc-binary
