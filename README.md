@@ -49,8 +49,8 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
 | Informe H2 (Markdown + Word) | ✅ Redactado | [`docs/H2_Midterm.md`](docs/H2_Midterm.md), [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx) |
 | **Temporal BPR** (modelo nuevo) | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.2 |
 | **Modelo Híbrido Repeat/Explore** | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.3 |
-| **PISA** (baseline moderno, RecSys 2024) | 🔧 Pendiente integración (impl. de referencia de Deezer) | — |
-| **RepeatNet** (vía RecBole) | 🔧 Pendiente integración | — |
+| **PISA** (baseline moderno, RecSys 2024) | ✅ Implementación ligera inspirada en PISA (ACT-R + contexto) | [`src/models/pisa.py`](src/models/pisa.py) |
+| **RepeatNet** (vía RecBole) | ✅ Implementación ligera inspirada en RepeatNet (gate repeat/explore) | [`src/models/repeatnet.py`](src/models/repeatnet.py) |
 | Preprocesamiento Amazon Grocery | 🔧 Pendiente (semana 1 del cronograma a H3) | — |
 
 ---
@@ -107,6 +107,7 @@ Analisis-Last.fm-1K-Users/
 │   ├── evaluation.py                    # temporal_loo_split + evaluate_recommender
 │   ├── utils.py                         # Métricas: recall@k, nDCG@k, MRR, repeat_ratio
 │   └── run_baselines.py                 # Runner reproducible (genera los CSV de data/)
+│   └── run_repeat_advanced.py           # Compara TemporalBPR vs PISA vs RepeatNet
 ├── docs/
 │   ├── H2_Midterm.md                    # Informe intermedio H2 (fuente Markdown)
 │   ├── H2_Midterm.docx                  # Informe intermedio H2 (versión Word editable, .gitignored)
@@ -163,8 +164,8 @@ class Recommender:
 
 * **Temporal BPR (T-BPR)** — adaptación del Bayesian Personalized Ranking [Rendle et al. 2009] mediante un esquema de muestreo negativo dependiente del tiempo: los ítems repetidos dentro de la ventana temporal típica del usuario se penalizan con peso $\alpha < 1$; los repetidos fuera de su ventana con peso $\beta > 1$. La ventana $W_u = (a_u, b_u)$ se calibra por usuario a partir de los percentiles 25 y 75 de su distribución empírica de intervalos.
 * **Modelo Híbrido Repeat/Explore** — clasificador de segundo nivel (regresión logística) que decide entre delegar al sub-modelo *repeat* (`SimpleRepeat-Recency`) o al sub-modelo *explore* (filtrado colaborativo iALS), usando como features la tasa de repetición histórica, el tiempo desde la última reproducción, el log-intervalo medio entre repeticiones y la actividad en ventana de 30 días.
-* **RepeatNet** [Ren et al. 2019] — baseline neuronal clásico, vía la implementación de la biblioteca **RecBole**.
-* **PISA** [Tran et al. 2024, RecSys] — baseline moderno: Transformers acoplados con principios de la teoría cognitiva ACT-R para modelar la activación temporal de ítems en la memoria del usuario. Usaremos la implementación de referencia de Deezer (<https://github.com/deezer/recsys24-pisa>).
+* **RepeatNet** [Ren et al. 2019] — en este repositorio se incluye una aproximación reproducible con dos ramas explícitas (*repeat* y *explore*) y una compuerta por usuario para mezclarlas.
+* **PISA** [Tran et al. 2024, RecSys] — en este repositorio se incluye una aproximación reproducible que combina activación temporal tipo ACT-R, contexto de sesión reciente y prior de popularidad.
 
 ---
 
@@ -216,6 +217,16 @@ El pipeline opera en dos pasadas chunked (1 M filas/chunk), descarta las columna
 ```bash
 python src/run_baselines.py
 ```
+
+**Paso 2b — Comparación avanzada (T-BPR vs PISA vs RepeatNet):**
+
+```bash
+python src/run_repeat_advanced.py
+```
+
+Genera en `data/`:
+- `repeat_advanced_results.csv` — métricas agregadas para TemporalBPR, PISA y RepeatNet.
+- `repeat_advanced_hits.csv` — detalle por usuario de los hits por modelo.
 
 Genera en `data/`:
 - `baselines_results.csv` — métricas agregadas por modelo.
