@@ -56,7 +56,9 @@ class PISARecommender:
 
         df = train_df.copy()
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=False)
-        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(drop=True)
+        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(
+            drop=True
+        )
 
         self._all_items = df["item_id"].drop_duplicates().tolist()
 
@@ -102,7 +104,9 @@ class PISARecommender:
             act = self._activation_score(user_id, item, cutoff_h)
             ctx = self._context_score(item, recent_ctx)
             pop = self._pop_scores.get(item, 0.0)
-            score = self.w_activation * act + self.w_context * ctx + self.w_popularity * pop
+            score = (
+                self.w_activation * act + self.w_context * ctx + self.w_popularity * pop
+            )
             scored.append((item, score))
 
         scored.sort(key=lambda x: x[1], reverse=True)
@@ -139,7 +143,9 @@ class PISARecommender:
 
     def _build_context_strength(self, df: pd.DataFrame) -> None:
         """Build item-item directional strengths from adjacent interactions."""
-        pair_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
+        pair_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
 
         for _, group in df.groupby("user_id", observed=True, sort=False):
             items = group.sort_values("timestamp", kind="mergesort")["item_id"].tolist()
@@ -176,5 +182,7 @@ class PISARecommender:
         score = 0.0
         for pos, ctx_item in enumerate(recent_ctx):
             weight = 1.0 / (1.0 + pos)
-            score += weight * self._item_context_strength.get(ctx_item, {}).get(item, 0.0)
+            score += weight * self._item_context_strength.get(ctx_item, {}).get(
+                item, 0.0
+            )
         return float(score)

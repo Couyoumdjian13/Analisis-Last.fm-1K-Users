@@ -9,7 +9,7 @@ Repositorio del proyecto final del curso **IIC3633 Sistemas Recomendadores** (se
 ## Tabla de Contenidos
 
 1. [Resumen del proyecto](#1-resumen-del-proyecto)
-2. [Estado actual (H2 Midterm)](#2-estado-actual-h2-midterm)
+2. [Estado actual del repositorio](#2-estado-actual-del-repositorio)
 3. [Hallazgos principales](#3-hallazgos-principales)
 4. [Estructura del repositorio](#4-estructura-del-repositorio)
 5. [Datasets](#5-datasets)
@@ -35,7 +35,7 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
 
 ---
 
-## 2. Estado actual (H2 Midterm)
+## 2. Estado actual del repositorio
 
 | Componente | Estado | Ubicación |
 |---|---|---|
@@ -46,11 +46,12 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
 | Pipeline de evaluación leave-one-out temporal | ✅ Implementado y reproducible | [`src/evaluation.py`](src/evaluation.py) |
 | Resultados intermedios de baselines | ✅ Calculados sobre subset H1 | `data/baselines_results.csv`, `data/baselines_hits.csv` |
 | Figuras del EDA y correlación frecuencia ↔ reaparición (OE1) | ✅ Reproducible | [`notebooks/eda_figures.py`](notebooks/eda_figures.py), [`docs/figures/`](docs/figures/) |
-| Informe H2 (Markdown + Word) | ✅ Redactado | [`docs/H2_Midterm.md`](docs/H2_Midterm.md), [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx) |
-| **Temporal BPR** (modelo nuevo) | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.2 |
-| **Modelo Híbrido Repeat/Explore** | 🔧 Diseño formalizado, implementación en H3 | `docs/H2_Midterm.md` §1.3 |
+| Informe H2 (Markdown + Word) | ✅ Entregado (documento histórico) | [`docs/H2_Midterm.md`](docs/H2_Midterm.md), [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx) |
+| **Temporal BPR** (modelo nuevo) | ✅ Implementado y evaluable | [`src/run_tbpr.py`](src/run_tbpr.py), [`src/models/tbpr.py`](src/models/tbpr.py) |
+| **Modelo Híbrido Repeat/Explore** | 🔧 Diseño formalizado, implementación pendiente | `docs/H2_Midterm.md` §1.3 |
 | **PISA** (baseline moderno, RecSys 2024) | ✅ Implementación ligera inspirada en PISA (ACT-R + contexto) | [`src/models/pisa.py`](src/models/pisa.py) |
 | **RepeatNet** (vía RecBole) | ✅ Implementación ligera inspirada en RepeatNet (gate repeat/explore) | [`src/models/repeatnet.py`](src/models/repeatnet.py) |
+| Runner consolidado con `run_id` compartido | ✅ Implementado | [`src/run_all_models.py`](src/run_all_models.py) |
 | Preprocesamiento Amazon Grocery | 🔧 Pendiente (semana 1 del cronograma a H3) | — |
 
 ---
@@ -94,7 +95,10 @@ Analisis-Last.fm-1K-Users/
 │   ├── lastfm_1k_complete_fixed.parquet                   # Dataset completo limpio (no versionado)
 │   ├── lastfm_100_users_h1_fixed.parquet                  # Subset H1 (no versionado)
 │   ├── baselines_results.csv                              # Métricas agregadas por modelo
-│   └── baselines_hits.csv                                 # Detalle por hit (user_id, rank)
+│   ├── baselines_hits.csv                                 # Detalle por hit (user_id, rank)
+│   ├── repeat_advanced_results.csv                        # Métricas de TemporalBPR, PISA y RepeatNet
+│   ├── tbpr_results.csv                                   # Métricas de TemporalBPR standalone
+│   └── all_models_results.csv                             # Consolidado de todos los modelos
 ├── notebooks/
 │   ├── preprocessing.ipynb              # Notebook original de H1 (exploratorio)
 │   ├── preprocessing.py                 # Pipeline chunked reproducible (2 pasadas, < 1 GB RAM)
@@ -106,8 +110,10 @@ Analisis-Last.fm-1K-Users/
 │   │                                    # SimpleRepeatRecommender, SimpleRepeatRecencyRecommender
 │   ├── evaluation.py                    # temporal_loo_split + evaluate_recommender
 │   ├── utils.py                         # Métricas: recall@k, nDCG@k, MRR, repeat_ratio
-│   └── run_baselines.py                 # Runner reproducible (genera los CSV de data/)
-│   └── run_repeat_advanced.py           # Compara TemporalBPR vs PISA vs RepeatNet
+│   ├── run_baselines.py                 # Runner de baselines
+│   ├── run_repeat_advanced.py           # Compara TemporalBPR vs PISA vs RepeatNet
+│   ├── run_tbpr.py                      # Evalúa TemporalBPR standalone
+│   └── run_all_models.py                # Orquesta todas las corridas con run_id compartido
 ├── docs/
 │   ├── H2_Midterm.md                    # Informe intermedio H2 (fuente Markdown)
 │   ├── H2_Midterm.docx                  # Informe intermedio H2 (versión Word editable, .gitignored)
@@ -160,10 +166,10 @@ class Recommender:
 
 **Nota metodológica.** Bajo el paradigma repeat-aware **no se excluye** el historial del usuario del espacio de candidatos. Esta decisión es deliberada: filtrar el historial penaliza por construcción a cualquier modelo que sugiera repeticiones, distorsionando la evaluación (es la causa por la cual `SimpleRepeat` puntuaba 0 en el setup exploratorio de H1).
 
-### Modelos avanzados (diseño formalizado en `docs/H2_Midterm.md`, implementación a H3)
+### Modelos avanzados (estado actual)
 
-* **Temporal BPR (T-BPR)** — adaptación del Bayesian Personalized Ranking [Rendle et al. 2009] mediante un esquema de muestreo negativo dependiente del tiempo: los ítems repetidos dentro de la ventana temporal típica del usuario se penalizan con peso $\alpha < 1$; los repetidos fuera de su ventana con peso $\beta > 1$. La ventana $W_u = (a_u, b_u)$ se calibra por usuario a partir de los percentiles 25 y 75 de su distribución empírica de intervalos.
-* **Modelo Híbrido Repeat/Explore** — clasificador de segundo nivel (regresión logística) que decide entre delegar al sub-modelo *repeat* (`SimpleRepeat-Recency`) o al sub-modelo *explore* (filtrado colaborativo iALS), usando como features la tasa de repetición histórica, el tiempo desde la última reproducción, el log-intervalo medio entre repeticiones y la actividad en ventana de 30 días.
+* **Temporal BPR (T-BPR)** — adaptación del Bayesian Personalized Ranking [Rendle et al. 2009] mediante un esquema de muestreo negativo dependiente del tiempo: los ítems repetidos dentro de la ventana temporal típica del usuario se penalizan con peso $\alpha < 1$; los repetidos fuera de su ventana con peso $\beta > 1$. La ventana $W_u = (a_u, b_u)$ se calibra por usuario a partir de los percentiles 25 y 75 de su distribución empírica de intervalos. Implementado en `src/models/tbpr.py` y evaluable con `src/run_tbpr.py`.
+* **Modelo Híbrido Repeat/Explore** — clasificador de segundo nivel (regresión logística) que decide entre delegar al sub-modelo *repeat* (`SimpleRepeat-Recency`) o al sub-modelo *explore* (filtrado colaborativo iALS), usando como features la tasa de repetición histórica, el tiempo desde la última reproducción, el log-intervalo medio entre repeticiones y la actividad en ventana de 30 días. Diseño documentado, implementación aún pendiente.
 * **RepeatNet** [Ren et al. 2019] — en este repositorio se incluye una aproximación reproducible con dos ramas explícitas (*repeat* y *explore*) y una compuerta por usuario para mezclarlas.
 * **PISA** [Tran et al. 2024, RecSys] — en este repositorio se incluye una aproximación reproducible que combina activación temporal tipo ACT-R, contexto de sesión reciente y prior de popularidad.
 
@@ -186,9 +192,19 @@ Definiciones formales y discusión en [`docs/H2_Midterm.md`](docs/H2_Midterm.md)
 
 ## 8. Setup y reproducción de resultados
 
-**Requisitos:** Python 3.12, ~ 4 GB RAM disponibles. Probado en WSL2 Ubuntu 24.
+**Requisitos:** Python 3.10+, ~ 4 GB RAM disponibles.
 
-**Instalación:**
+**Instalación (PowerShell en Windows):**
+
+```powershell
+git clone https://github.com/Couyoumdjian13/Analisis-Last.fm-1K-Users.git
+cd Analisis-Last.fm-1K-Users
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+**Instalación (bash en Linux/macOS/WSL):**
 
 ```bash
 git clone https://github.com/Couyoumdjian13/Analisis-Last.fm-1K-Users.git
@@ -218,6 +234,10 @@ El pipeline opera en dos pasadas chunked (1 M filas/chunk), descarta las columna
 python src/run_baselines.py
 ```
 
+Genera en `data/`:
+- `baselines_results.csv` — métricas agregadas por modelo.
+- `baselines_hits.csv` — detalle por usuario en el que cada modelo acertó (incluye rank).
+
 **Paso 2b — Comparación avanzada (T-BPR vs PISA vs RepeatNet):**
 
 ```bash
@@ -228,9 +248,30 @@ Genera en `data/`:
 - `repeat_advanced_results.csv` — métricas agregadas para TemporalBPR, PISA y RepeatNet.
 - `repeat_advanced_hits.csv` — detalle por usuario de los hits por modelo.
 
+**Paso 2c — Evaluación standalone de Temporal BPR:**
+
+```bash
+python src/run_tbpr.py
+```
+
 Genera en `data/`:
-- `baselines_results.csv` — métricas agregadas por modelo.
-- `baselines_hits.csv` — detalle por usuario en el que cada modelo acertó (incluye rank).
+- `tbpr_results.csv` — métricas agregadas de TemporalBPR.
+- `tbpr_hits.csv` — detalle por usuario de hits de TemporalBPR.
+
+**Paso 2d (recomendado) — corrida consolidada con `run_id` compartido:**
+
+```bash
+python src/run_all_models.py
+```
+
+Genera/actualiza en conjunto:
+- `baselines_results.csv`
+- `baselines_hits.csv`
+- `repeat_advanced_results.csv`
+- `repeat_advanced_hits.csv`
+- `tbpr_results.csv`
+- `tbpr_hits.csv`
+- `all_models_results.csv`
 
 Los números reproducidos deben coincidir con la tabla de §3 de este README.
 
@@ -253,22 +294,26 @@ python -c "import pypandoc; pypandoc.convert_file('docs/H2_Midterm.md', 'docx', 
 
 ## 9. Documentos del curso
 
-* **H1 — Propuesta (entregada, 80/100)**: PDF entregado vía Canvas (no versionado).
-* **H2 — Informe Intermedio (vigente, entrega 2026-06-05)**:
+Sección de referencia histórica de entregables del curso.
+
+* **H1 — Propuesta (entregada, 80/100):** PDF entregado vía Canvas (no versionado).
+* **H2 — Informe Intermedio (entregado, 2026-06-05):**
   - Fuente Markdown: [`docs/H2_Midterm.md`](docs/H2_Midterm.md)
   - Versión Word: [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx)
-* **H3 — Paper (planificado, entrega 2026-07-07)**: ACM/ICML/NeurIPS, máx. 8 páginas.
+* **H3 — Paper (en desarrollo, entrega 2026-07-07):** formato ACM/ICML/NeurIPS, máx. 8 páginas.
 * **H4 — Póster (planificado, sesión presencial 2026-07-02)**.
 
 ---
 
 ## 10. Cronograma y entregables
 
+Actualizado al 2026-06-30.
+
 | Hito | Fecha | Peso | Estado |
 |---|---|---|---|
 | H1 Propuesta | 2026-05-08 | 15 % | Entregada (80/100) |
-| H2 Midterm | **2026-06-05** | 25 % | **En curso** |
-| H3 Paper | 2026-07-07 | 50 % | Planificado |
+| H2 Midterm | 2026-06-05 | 25 % | Entregada |
+| H3 Paper | 2026-07-07 | 50 % | En desarrollo |
 | H4 Sesión Pósters | 2026-07-02 | 10 % | Planificado |
 
 Cronograma detallado de tareas hacia H3 en [`docs/H2_Midterm.md`](docs/H2_Midterm.md) §5.4.

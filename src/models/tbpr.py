@@ -46,6 +46,9 @@ class TemporalBPRRecommender:
         temporal_activation_decay: float = 0.6,
         hard_negative_ratio: float = 0.0,
         hard_negative_pool: int = 24,
+        target_repeat_ratio: Optional[float] = 0.33,
+        calibration_strength: float = 1.0,
+        calibration_iterations: int = 16,
         verbose: bool = True,
     ) -> None:
         if not (0 < alpha < 1):
@@ -66,6 +69,9 @@ class TemporalBPRRecommender:
         self.temporal_activation_decay = temporal_activation_decay
         self.hard_negative_ratio = hard_negative_ratio
         self.hard_negative_pool = hard_negative_pool
+        self.target_repeat_ratio = target_repeat_ratio
+        self.calibration_strength = calibration_strength
+        self.calibration_iterations = calibration_iterations
         self.verbose = verbose
 
         if not (0.0 <= self.temporal_activation_weight <= 5.0):
@@ -76,6 +82,14 @@ class TemporalBPRRecommender:
             raise ValueError("hard_negative_ratio debe estar entre 0 y 1")
         if self.hard_negative_pool < 4:
             raise ValueError("hard_negative_pool debe ser al menos 4")
+        if self.target_repeat_ratio is not None and not (
+            0.0 <= self.target_repeat_ratio <= 1.0
+        ):
+            raise ValueError("target_repeat_ratio debe estar entre 0 y 1 o ser None")
+        if not (0.0 <= self.calibration_strength <= 3.0):
+            raise ValueError("calibration_strength debe estar entre 0 y 3")
+        if self.calibration_iterations < 1:
+            raise ValueError("calibration_iterations debe ser al menos 1")
 
         self._rng = np.random.default_rng(random_state)
 
@@ -108,19 +122,26 @@ class TemporalBPRRecommender:
 
         df = train_df.copy()
         df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(drop=True)
+        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(
+            drop=True
+        )
 
         self._build_indexers(df)
         self._build_user_windows(df)
         self._build_popularity(df)
 
         self._build_events(df)
-        self._init_params(n_users=len(self._idx_to_user), n_items=len(self._idx_to_item))
+        self._init_params(
+            n_users=len(self._idx_to_user), n_items=len(self._idx_to_item)
+        )
 
         for epoch in range(1, self.epochs + 1):
             avg_loss = self._train_one_epoch()
             if self.verbose:
-                print(f"  [T-BPR] epoch {epoch:>2}/{self.epochs}  avg_bpr_loss={avg_loss:.5f}", flush=True)
+                print(
+                    f"  [T-BPR] epoch {epoch:>2}/{self.epochs}  avg_bpr_loss={avg_loss:.5f}",
+                    flush=True,
+                )
 
     def recommend(self, user_id: str, user_history: Set[str], k: int = 10) -> List[str]:
         """Devuelve top-k items sin excluir historial (protocolo repeat-aware)."""
@@ -148,7 +169,24 @@ class TemporalBPRRecommender:
             cutoff_ns = self._user_last_ts_ns.get(u_idx)
             if cutoff_ns is not None:
                 for item_idx, times in user_times.items():
-                    scores[item_idx] += self.temporal_activation_weight * self._activation_score(cutoff_ns, times)
+                    scores[
+                        item_idx
+                    ] += self.temporal_activation_weight * self._activation_score(
+                        cutoff_ns, times
+                    )
+
+        if self.target_repeat_ratio is not None and self.calibration_strength > 0:
+            seen_items = self._user_items_all.get(u_idx, set())
+            if seen_items:
+                seen_mask = np.zeros(len(scores), dtype=bool)
+                seen_idx = np.fromiter(seen_items, dtype=np.int64)
+                seen_mask[seen_idx] = True
+                scores = self._calibrate_scores_for_target_repeat_ratio(
+                    scores=scores,
+                    seen_mask=seen_mask,
+                    k=k,
+                    target=self.target_repeat_ratio,
+                )
 
         if k >= len(scores):
             top_idx = np.argsort(-scores)
@@ -156,6 +194,56 @@ class TemporalBPRRecommender:
             cand = np.argpartition(-scores, kth=k - 1)[:k]
             top_idx = cand[np.argsort(-scores[cand])]
         return [self._idx_to_item[i] for i in top_idx.tolist()]
+
+    def _calibrate_scores_for_target_repeat_ratio(
+        self,
+        scores: np.ndarray,
+        seen_mask: np.ndarray,
+        k: int,
+        target: float,
+    ) -> np.ndarray:
+        """Ajusta scores con un offset para aproximar repeat_ratio objetivo en top-k."""
+        if k <= 0:
+            return scores
+
+        n_items = len(scores)
+        if n_items == 0:
+            return scores
+
+        k_eff = min(k, n_items)
+        if seen_mask.sum() == 0 or seen_mask.sum() == n_items:
+            return scores
+
+        centered_target = (
+            target * self.calibration_strength + (1.0 - self.calibration_strength) * 0.5
+        )
+        centered_target = float(np.clip(centered_target, 0.0, 1.0))
+
+        scores_adj = scores.copy()
+        score_scale = float(np.std(scores_adj))
+        base = max(1.0, score_scale * 8.0)
+        lo, hi = -base, base
+
+        for _ in range(self.calibration_iterations):
+            mid = 0.5 * (lo + hi)
+            tmp_scores = scores_adj.copy()
+            tmp_scores[~seen_mask] += mid
+
+            if k_eff >= len(tmp_scores):
+                top_idx = np.argsort(-tmp_scores)
+            else:
+                cand = np.argpartition(-tmp_scores, kth=k_eff - 1)[:k_eff]
+                top_idx = cand[np.argsort(-tmp_scores[cand])]
+
+            observed_ratio = float(seen_mask[top_idx].mean())
+            if observed_ratio > centered_target:
+                lo = mid
+            else:
+                hi = mid
+
+        shift = 0.5 * (lo + hi)
+        scores_adj[~seen_mask] += shift
+        return scores_adj
 
     def _build_indexers(self, df: pd.DataFrame) -> None:
         users = df["user_id"].drop_duplicates().tolist()
@@ -176,9 +264,13 @@ class TemporalBPRRecommender:
             u_idx = self._user_to_idx[row.user_id]
             i_idx = self._item_to_idx[row.item_id]
             ts_ns = np.int64(row.timestamp.value)
-            self._user_events.setdefault(u_idx, []).append(_Event(item_idx=i_idx, timestamp_ns=ts_ns))
+            self._user_events.setdefault(u_idx, []).append(
+                _Event(item_idx=i_idx, timestamp_ns=ts_ns)
+            )
             self._user_items_all.setdefault(u_idx, set()).add(i_idx)
-            self._user_item_times_ns.setdefault(u_idx, {}).setdefault(i_idx, []).append(ts_ns)
+            self._user_item_times_ns.setdefault(u_idx, {}).setdefault(i_idx, []).append(
+                ts_ns
+            )
             self._user_last_ts_ns[u_idx] = ts_ns
 
         for u_idx, events in self._user_events.items():
@@ -201,7 +293,9 @@ class TemporalBPRRecommender:
             g = group.sort_values("timestamp", kind="mergesort")
             g = g[["item_id", "timestamp"]].copy()
             g["prev_ts"] = g.groupby("item_id", observed=True)["timestamp"].shift(1)
-            delta_h = (g["timestamp"] - g["prev_ts"]).dt.total_seconds().div(3600.0).dropna()
+            delta_h = (
+                (g["timestamp"] - g["prev_ts"]).dt.total_seconds().div(3600.0).dropna()
+            )
 
             if len(delta_h) == 0:
                 a_h, b_h = 24.0, 24.0 * 7.0
@@ -219,12 +313,18 @@ class TemporalBPRRecommender:
 
     def _init_params(self, n_users: int, n_items: int) -> None:
         scale = 0.01
-        self._P = self._rng.normal(0.0, scale, size=(n_users, self.factors)).astype(np.float64)
-        self._Q = self._rng.normal(0.0, scale, size=(n_items, self.factors)).astype(np.float64)
+        self._P = self._rng.normal(0.0, scale, size=(n_users, self.factors)).astype(
+            np.float64
+        )
+        self._Q = self._rng.normal(0.0, scale, size=(n_items, self.factors)).astype(
+            np.float64
+        )
         self._item_bias = np.zeros(n_items, dtype=np.float64)
 
     def _train_one_epoch(self) -> float:
-        assert self._P is not None and self._Q is not None and self._item_bias is not None
+        assert (
+            self._P is not None and self._Q is not None and self._item_bias is not None
+        )
 
         n_items = self._Q.shape[0]
         total_loss = 0.0
@@ -284,7 +384,10 @@ class TemporalBPRRecommender:
             (np.int64(24 * 3600 * 1e9), np.int64(7 * 24 * 3600 * 1e9)),
         )
 
-        if self.hard_negative_ratio > 0 and self._rng.random() < self.hard_negative_ratio:
+        if (
+            self.hard_negative_ratio > 0
+            and self._rng.random() < self.hard_negative_ratio
+        ):
             hard = self._sample_hard_negative(
                 user_idx=user_idx,
                 pos_item_idx=pos_item_idx,
@@ -301,7 +404,9 @@ class TemporalBPRRecommender:
             j = int(self._rng.integers(0, n_items))
             if j == pos_item_idx:
                 continue
-            weight = self._negative_weight(j, timestamp_ns, user_past_seen, user_last_seen_ts_ns, window)
+            weight = self._negative_weight(
+                j, timestamp_ns, user_past_seen, user_last_seen_ts_ns, window
+            )
             if self._rng.random() < (weight / self.beta):
                 return j
 
@@ -345,7 +450,11 @@ class TemporalBPRRecommender:
         if unseen_needed > 0:
             forbidden = set(user_past_seen)
             forbidden.add(pos_item_idx)
-            candidates.extend(self._sample_unseen(forbidden=forbidden, n_items=n_items, n_samples=unseen_needed))
+            candidates.extend(
+                self._sample_unseen(
+                    forbidden=forbidden, n_items=n_items, n_samples=unseen_needed
+                )
+            )
 
         if not candidates:
             return None
@@ -391,7 +500,9 @@ class TemporalBPRRecommender:
         idx = self._rng.choice(len(items), size=n_samples, replace=False)
         return [items[int(i)] for i in idx.tolist()]
 
-    def _sample_unseen(self, forbidden: Set[int], n_items: int, n_samples: int) -> List[int]:
+    def _sample_unseen(
+        self, forbidden: Set[int], n_items: int, n_samples: int
+    ) -> List[int]:
         out: List[int] = []
         used: Set[int] = set()
         max_tries = max(20, n_samples * 15)
@@ -414,20 +525,27 @@ class TemporalBPRRecommender:
         # Log para estabilizar magnitud y evitar dominar el score MF.
         return math.log1p(total)
 
-    def _random_item_excluding(self, forbidden: Set[int], n_items: int) -> Optional[int]:
+    def _random_item_excluding(
+        self, forbidden: Set[int], n_items: int
+    ) -> Optional[int]:
         if len(forbidden) >= n_items:
             return None
         for _ in range(50):
             j = int(self._rng.integers(0, n_items))
             if j not in forbidden:
                 return j
-        allowed = np.setdiff1d(np.arange(n_items, dtype=np.int64), np.array(list(forbidden), dtype=np.int64))
+        allowed = np.setdiff1d(
+            np.arange(n_items, dtype=np.int64),
+            np.array(list(forbidden), dtype=np.int64),
+        )
         if len(allowed) == 0:
             return None
         return int(allowed[self._rng.integers(0, len(allowed))])
 
     def _score(self, u: int, i: int) -> float:
-        assert self._P is not None and self._Q is not None and self._item_bias is not None
+        assert (
+            self._P is not None and self._Q is not None and self._item_bias is not None
+        )
         return float(self._P[u] @ self._Q[i] + self._item_bias[i])
 
     def _bpr_loss(self, u: int, i: int, j: int) -> float:
@@ -438,7 +556,9 @@ class TemporalBPRRecommender:
         return -x_uij + math.log1p(math.exp(x_uij))
 
     def _sgd_step(self, u: int, i: int, j: int) -> None:
-        assert self._P is not None and self._Q is not None and self._item_bias is not None
+        assert (
+            self._P is not None and self._Q is not None and self._item_bias is not None
+        )
 
         pu = self._P[u]
         qi = self._Q[i]
@@ -451,9 +571,15 @@ class TemporalBPRRecommender:
         qi_old = qi.copy()
         qj_old = qj.copy()
 
-        self._P[u] += self.learning_rate * (grad * (qi_old - qj_old) - self.reg * pu_old)
+        self._P[u] += self.learning_rate * (
+            grad * (qi_old - qj_old) - self.reg * pu_old
+        )
         self._Q[i] += self.learning_rate * (grad * pu_old - self.reg * qi_old)
         self._Q[j] += self.learning_rate * (-grad * pu_old - self.reg * qj_old)
 
-        self._item_bias[i] += self.learning_rate * (grad - self.reg * self._item_bias[i])
-        self._item_bias[j] += self.learning_rate * (-grad - self.reg * self._item_bias[j])
+        self._item_bias[i] += self.learning_rate * (
+            grad - self.reg * self._item_bias[i]
+        )
+        self._item_bias[j] += self.learning_rate * (
+            -grad - self.reg * self._item_bias[j]
+        )

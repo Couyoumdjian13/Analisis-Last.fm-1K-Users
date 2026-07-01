@@ -75,7 +75,7 @@ Si no tienes este archivo, descárgalo desde el [repositorio oficial de Last.fm 
 
 ## Paso 7: Ejecutar los Baselines (15 segundos)
 
-Este es el paso principal: evalúa 4 modelos recomendadores simples.
+Este paso evalúa 4 modelos recomendadores base bajo LOO temporal.
 
 ```powershell
 python src/run_baselines.py
@@ -147,6 +147,33 @@ python src/run_repeat_advanced.py
 Genera:
 - `data/repeat_advanced_results.csv`
 - `data/repeat_advanced_hits.csv`
+
+## Paso 9b (Opcional): Evaluar T-BPR standalone
+
+```powershell
+python src/run_tbpr.py
+```
+
+Genera:
+- `data/tbpr_results.csv`
+- `data/tbpr_hits.csv`
+
+## Paso 10 (Recomendado): Ejecutar todo alineado en una sola corrida
+
+Para evitar desalineaciones entre CSVs, corre todos los modelos con un `run_id` compartido:
+
+```powershell
+python src/run_all_models.py
+```
+
+Genera y actualiza en conjunto:
+- `data/baselines_results.csv`
+- `data/baselines_hits.csv`
+- `data/repeat_advanced_results.csv`
+- `data/repeat_advanced_hits.csv`
+- `data/tbpr_results.csv`
+- `data/tbpr_hits.csv`
+- `data/all_models_results.csv`
 
 ---
 
@@ -249,20 +276,19 @@ repeat_ratio = fracción_del_top_10_en_historial
 
 ## Próximos Pasos
 
-Una vez que tengas los resultados base, el proyecto sugiere:
+Una vez que tengas los resultados, el proyecto sugiere:
 
-1. **Análisis de hits vs misses:**
-   - ¿Qué caracteriza a los 9 usuarios donde Recency acertó?
-   - ¿Qué explota el modelo en los 91 usuarios donde falló?
+1. **Analizar hits vs misses por modelo:**
+  - ¿Qué patrones aparecen en usuarios con aciertos de Recency?
+  - ¿Dónde gana o pierde TemporalBPR frente a PISA y RepeatNet?
 
-2. **Modelo Híbrido:**
-   - Decidir por usuario si repetir o explorar basado en su histórico.
-   - Esperado: mejor balance entre Repeat Ratio y Recall.
+2. **Revisar consistencia entre corridas:**
+  - Usar `run_id` para comparar resultados entre archivos CSV.
+  - Validar que `all_models_results.csv` coincida con los agregados individuales.
 
-3. **Modelos Avanzados (H3):**
-   - Temporal BPR
-   - RecBole + RepeatNet
-   - PISA (Transformers + ACT-R)
+3. **Extender el pipeline experimental:**
+  - Implementar y evaluar el modelo híbrido Repeat/Explore.
+  - Replicar protocolo en un segundo dominio (Amazon Grocery).
 
 ---
 
@@ -287,8 +313,8 @@ Una vez que tengas los resultados base, el proyecto sugiere:
 **Papers referenciados:**
 - Rendle et al. (2009): *BPR: Bayesian Personalized Ranking*
 - Ren et al. (2019): *RepeatNet: Repeat-Aware Neural Recommendation Machine*
-- Tran et al. (2024): *PISA: Predicting Item Substitution Activation in Recommenders* (RecSys)
+- Tran et al. (2024): *Transformers Meet ACT-R: Repeat-Aware and Sequential Listening Session Recommendation* (RecSys)
 
 ---
 
-**¡Listo!** Ahora tu código corre end-to-end. 🚀
+Listo. El pipeline queda ejecutable end-to-end y con salidas alineadas.

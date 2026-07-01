@@ -24,7 +24,6 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
 DATA_DIR = os.path.join(REPO_ROOT, "data")
@@ -36,11 +35,15 @@ os.makedirs(FIG_DIR, exist_ok=True)
 
 def load_subset() -> pd.DataFrame:
     if not os.path.exists(SUBSET_PATH):
-        print(f"ERROR: no encontre {SUBSET_PATH}. Corre antes notebooks/preprocessing.py")
+        print(
+            f"ERROR: no encontre {SUBSET_PATH}. Corre antes notebooks/preprocessing.py"
+        )
         sys.exit(1)
     df = pd.read_parquet(SUBSET_PATH)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(drop=True)
+    df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(
+        drop=True
+    )
     return df
 
 
@@ -59,7 +62,9 @@ def per_user_stats(df: pd.DataFrame) -> pd.DataFrame:
 
 def interval_hours(df: pd.DataFrame) -> pd.Series:
     rep = df[df["is_repeat"]].copy()
-    rep["prev_ts"] = rep.groupby(["user_id", "item_id"], observed=True)["timestamp"].shift(1)
+    rep["prev_ts"] = rep.groupby(["user_id", "item_id"], observed=True)[
+        "timestamp"
+    ].shift(1)
     rep["interval_h"] = (rep["timestamp"] - rep["prev_ts"]).dt.total_seconds() / 3600.0
     return rep["interval_h"].dropna()
 
@@ -89,8 +94,12 @@ def figure_intervals(interval_h: pd.Series) -> None:
     ax.hist(log_h, bins=50, color="#2ecc71", edgecolor="white")
     p25 = np.log1p(1.74)
     p50 = np.log1p(27.04)
-    ax.axvline(p25, color="#e74c3c", linestyle="--", linewidth=1.0, label="p25 ~ 1.74 h")
-    ax.axvline(p50, color="#8e44ad", linestyle="--", linewidth=1.0, label="mediana ~ 27 h")
+    ax.axvline(
+        p25, color="#e74c3c", linestyle="--", linewidth=1.0, label="p25 ~ 1.74 h"
+    )
+    ax.axvline(
+        p50, color="#8e44ad", linestyle="--", linewidth=1.0, label="mediana ~ 27 h"
+    )
     ax.set_xlabel("log(1 + intervalo entre repeticiones [h])")
     ax.set_ylabel("# de repeticiones")
     ax.set_title(f"Intervalos entre repeticiones (n={len(interval_h):,})")
@@ -133,7 +142,9 @@ def spearman_freq_vs_repeat(df: pd.DataFrame) -> tuple[float, float, int]:
               reappears   = 1 si el item aparece en la segunda mitad, 0 si no
         - Spearman pooled across users sobre todos los pares (user, item).
     """
-    df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(drop=True)
+    df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(
+        drop=True
+    )
     df["rank"] = df.groupby("user_id", observed=True).cumcount()
     df["n"] = df.groupby("user_id", observed=True)["rank"].transform("count")
     df["half"] = np.where(df["rank"] < df["n"] / 2, "past", "future")

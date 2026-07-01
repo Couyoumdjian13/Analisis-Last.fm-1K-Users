@@ -27,7 +27,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DATA_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "data"))
 DIRNAME = os.environ.get("LASTFM_1K_DIRNAME", DEFAULT_DATA_DIR)
@@ -42,17 +41,25 @@ CHUNK_SIZE = 1_000_000
 
 # Filas del TSV con campos corruptos (offset 1-indexed del archivo original).
 CORRUPTED_ROWS = [
-    2120260 - 1, 2446318 - 1, 11141081 - 1,
-    11152099 - 1, 11152402 - 1, 11882087 - 1,
-    12902539 - 1, 12935044 - 1, 17589539 - 1,
+    2120260 - 1,
+    2446318 - 1,
+    11141081 - 1,
+    11152099 - 1,
+    11152402 - 1,
+    11882087 - 1,
+    12902539 - 1,
+    12935044 - 1,
+    17589539 - 1,
 ]
 
 # Schema fijo del parquet de salida (necesario para escritura incremental).
-PARQUET_SCHEMA = pa.schema([
-    pa.field("user_id", pa.string()),
-    pa.field("timestamp", pa.timestamp("ns")),
-    pa.field("item_id", pa.string()),
-])
+PARQUET_SCHEMA = pa.schema(
+    [
+        pa.field("user_id", pa.string()),
+        pa.field("timestamp", pa.timestamp("ns")),
+        pa.field("item_id", pa.string()),
+    ]
+)
 
 
 def iter_chunks(filepath: str):
@@ -61,7 +68,14 @@ def iter_chunks(filepath: str):
         filepath,
         sep="\t",
         header=None,
-        names=["user_id", "timestamp", "artist_id", "artist_name", "track_id", "track_name"],
+        names=[
+            "user_id",
+            "timestamp",
+            "artist_id",
+            "artist_name",
+            "track_id",
+            "track_name",
+        ],
         usecols=["user_id", "timestamp", "artist_name", "track_name"],
         dtype={"user_id": "string", "artist_name": "string", "track_name": "string"},
         skiprows=CORRUPTED_ROWS,
@@ -85,11 +99,16 @@ def write_full_parquet(filepath: str, full_parquet_path: str) -> Counter:
             user_counts.update(chunk["user_id"].value_counts().to_dict())
 
             out = chunk[["user_id", "timestamp", "item_id"]]
-            table = pa.Table.from_pandas(out, schema=PARQUET_SCHEMA, preserve_index=False)
+            table = pa.Table.from_pandas(
+                out, schema=PARQUET_SCHEMA, preserve_index=False
+            )
             writer.write_table(table)
 
             total_rows += len(chunk)
-            print(f"  chunk {i:>3}: +{len(chunk):>9,} filas (acumulado: {total_rows:,})", flush=True)
+            print(
+                f"  chunk {i:>3}: +{len(chunk):>9,} filas (acumulado: {total_rows:,})",
+                flush=True,
+            )
     finally:
         writer.close()
 
@@ -98,9 +117,13 @@ def write_full_parquet(filepath: str, full_parquet_path: str) -> Counter:
     return user_counts
 
 
-def write_h1_subset(full_parquet_path: str, subset_parquet_path: str, top_users: list[str]) -> int:
+def write_h1_subset(
+    full_parquet_path: str, subset_parquet_path: str, top_users: list[str]
+) -> int:
     """Pasada 2: lee el parquet con pushdown, recorta a tail-N por user."""
-    table = pq.read_table(full_parquet_path, filters=[("user_id", "in", set(top_users))])
+    table = pq.read_table(
+        full_parquet_path, filters=[("user_id", "in", set(top_users))]
+    )
     subset_df = table.to_pandas()
     subset_df.sort_values(["user_id", "timestamp"], inplace=True)
     subset_df = subset_df.groupby("user_id", group_keys=False).tail(MAX_PLAYS_PER_USER)
@@ -132,7 +155,10 @@ def main() -> None:
     print(f"Tiempo pasada 1: {time.perf_counter() - t0:.1f}s\n")
 
     top_users = [uid for uid, _ in user_counts.most_common(N_USERS)]
-    print(f"=== Pasada 2: subset H1 (top {N_USERS} usuarios, tail {MAX_PLAYS_PER_USER}) ===", flush=True)
+    print(
+        f"=== Pasada 2: subset H1 (top {N_USERS} usuarios, tail {MAX_PLAYS_PER_USER}) ===",
+        flush=True,
+    )
     t1 = time.perf_counter()
     n_subset = write_h1_subset(full_parquet_path, subset_parquet_path, top_users)
     print(f"Subset H1: {subset_parquet_path}")

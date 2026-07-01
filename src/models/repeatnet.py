@@ -50,7 +50,9 @@ class RepeatNetRecommender:
 
         df = train_df.copy()
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=False)
-        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(drop=True)
+        df = df.sort_values(["user_id", "timestamp"], kind="mergesort").reset_index(
+            drop=True
+        )
 
         pop = df["item_id"].value_counts()
         self._top_items = pop.index.tolist()
@@ -132,7 +134,9 @@ class RepeatNetRecommender:
             self._user_repeat_prob[user_id] = float(min(max(repeat_prob, 0.05), 0.95))
 
     def _build_transitions(self, df: pd.DataFrame) -> None:
-        trans_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(lambda: defaultdict(int))
+        trans_counts: DefaultDict[str, DefaultDict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
 
         for _, group in df.groupby("user_id", observed=True, sort=False):
             items = group.sort_values("timestamp", kind="mergesort")["item_id"].tolist()
@@ -145,7 +149,9 @@ class RepeatNetRecommender:
             total = float(sum(targets.values()))
             if total <= 0:
                 continue
-            self._transitions[src_item] = {tgt: cnt / total for tgt, cnt in targets.items()}
+            self._transitions[src_item] = {
+                tgt: cnt / total for tgt, cnt in targets.items()
+            }
 
     def _repeat_branch_scores(self, user_id: str) -> Dict[str, float]:
         counts = self._user_counts.get(user_id, Counter())
@@ -170,7 +176,10 @@ class RepeatNetRecommender:
 
         if last_item is not None:
             for item, p in self._transitions.get(last_item, {}).items():
-                out[item] = self.w_explore_transition * p + self.w_explore_pop * self._global_pop.get(item, 0.0)
+                out[item] = (
+                    self.w_explore_transition * p
+                    + self.w_explore_pop * self._global_pop.get(item, 0.0)
+                )
 
         if not out:
             for item in self._top_items[: self.top_pop_fallback]:

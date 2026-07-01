@@ -41,9 +41,7 @@ def evaluate_recommender(
     rec.fit(train_df)
 
     user_histories = (
-        train_df.groupby("user_id", observed=True)["item_id"]
-        .apply(set)
-        .to_dict()
+        train_df.groupby("user_id", observed=True)["item_id"].apply(set).to_dict()
     )
 
     n = len(test_df)
