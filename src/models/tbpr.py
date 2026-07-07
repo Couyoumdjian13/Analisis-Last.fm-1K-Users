@@ -2,11 +2,15 @@
 
 Implementa una variante de BPR-MF para escenarios repeat-aware.
 Para cada interaccion positiva (u, i, t), el item negativo j se muestrea con
-pesos distintos segun la ventana temporal de repeticion W_u = (p25, p75):
+pesos distintos segun la ventana temporal de repeticion
+W_u = (p_{window_low_pct}, p_{window_high_pct}) calibrada por usuario:
 
     - j repetido y dentro de W_u  -> peso alpha  (penalizacion suave)
     - j no visto previamente       -> peso 1.0
     - j repetido fuera de W_u      -> peso beta   (penalizacion fuerte)
+
+Los percentiles de la ventana (window_low_pct=25, window_high_pct=75 por
+defecto) son configurables para el analisis de sensibilidad del intervalo.
 
 La clase cumple la interfaz del proyecto: fit(train_df) / recommend(...).
 """
@@ -49,12 +53,16 @@ class TemporalBPRRecommender:
         target_repeat_ratio: Optional[float] = 0.33,
         calibration_strength: float = 1.0,
         calibration_iterations: int = 16,
+        window_low_pct: int = 25,
+        window_high_pct: int = 75,
         verbose: bool = True,
     ) -> None:
         if not (0 < alpha < 1):
             raise ValueError("alpha debe cumplir 0 < alpha < 1")
         if not (beta > 1):
             raise ValueError("beta debe cumplir beta > 1")
+        if not (0 < window_low_pct < window_high_pct < 100):
+            raise ValueError("Se requiere 0 < window_low_pct < window_high_pct < 100")
         self.factors = factors
         self.learning_rate = learning_rate
         self.reg = reg
@@ -72,6 +80,8 @@ class TemporalBPRRecommender:
         self.target_repeat_ratio = target_repeat_ratio
         self.calibration_strength = calibration_strength
         self.calibration_iterations = calibration_iterations
+        self.window_low_pct = window_low_pct
+        self.window_high_pct = window_high_pct
         self.verbose = verbose
 
         if not (0.0 <= self.temporal_activation_weight <= 5.0):
@@ -287,7 +297,7 @@ class TemporalBPRRecommender:
         self._pop_items_idx = [self._item_to_idx[it] for it in vc.index.tolist()]
 
     def _build_user_windows(self, df: pd.DataFrame) -> None:
-        """Construye W_u = (p25, p75) en nanosegundos para cada usuario."""
+        """Construye W_u = (p_low, p_high) en nanosegundos para cada usuario."""
         self._user_windows_ns = {}
         for user_id, group in df.groupby("user_id", observed=True, sort=False):
             g = group.sort_values("timestamp", kind="mergesort")
@@ -300,8 +310,8 @@ class TemporalBPRRecommender:
             if len(delta_h) == 0:
                 a_h, b_h = 24.0, 24.0 * 7.0
             else:
-                a_h = float(np.percentile(delta_h, 25))
-                b_h = float(np.percentile(delta_h, 75))
+                a_h = float(np.percentile(delta_h, self.window_low_pct))
+                b_h = float(np.percentile(delta_h, self.window_high_pct))
                 if b_h < a_h:
                     a_h, b_h = b_h, a_h
 

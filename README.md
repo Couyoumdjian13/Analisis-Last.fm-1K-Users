@@ -44,15 +44,19 @@ El **objetivo general** es desarrollar y comparar modelos que aprendan cuándo c
 | Dataset completo limpio (992 usuarios) en Parquet | ✅ Generado (19 098 853 filas, 375 MB) | `data/lastfm_1k_complete_fixed.parquet` |
 | Baselines repeat-aware (4 variantes) | ✅ Implementados con interfaz común | [`src/models/baselines.py`](src/models/baselines.py) |
 | Pipeline de evaluación leave-one-out temporal | ✅ Implementado y reproducible | [`src/evaluation.py`](src/evaluation.py) |
-| Resultados intermedios de baselines | ✅ Calculados sobre subset H1 | `data/baselines_results.csv`, `data/baselines_hits.csv` |
+| Resultados de baselines y modelos avanzados | ✅ Calculados sobre subset H1 | `data/baselines_results.csv`, `data/repeat_advanced_results.csv` |
 | Figuras del EDA y correlación frecuencia ↔ reaparición (OE1) | ✅ Reproducible | [`notebooks/eda_figures.py`](notebooks/eda_figures.py), [`docs/figures/`](docs/figures/) |
-| Informe H2 (Markdown + Word) | ✅ Entregado (documento histórico) | [`docs/H2_Midterm.md`](docs/H2_Midterm.md), [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx) |
-| **Temporal BPR** (modelo nuevo) | ✅ Implementado y evaluable | [`src/run_tbpr.py`](src/run_tbpr.py), [`src/models/tbpr.py`](src/models/tbpr.py) |
-| **Modelo Híbrido Repeat/Explore** | 🔧 Diseño formalizado, implementación pendiente | `docs/H2_Midterm.md` §1.3 |
-| **PISA** (baseline moderno, RecSys 2024) | ✅ Implementación ligera inspirada en PISA (ACT-R + contexto) | [`src/models/pisa.py`](src/models/pisa.py) |
-| **RepeatNet** (vía RecBole) | ✅ Implementación ligera inspirada en RepeatNet (gate repeat/explore) | [`src/models/repeatnet.py`](src/models/repeatnet.py) |
+| Informe H2 (Markdown) | ✅ Entregado (documento histórico) | [`docs/H2_Midterm.md`](docs/H2_Midterm.md) |
+| **Paper Final H3** | ✅ Entregado | [`docs/Informe_Final.md`](docs/Informe_Final.md) |
+| **Temporal BPR (T-BPR)** — ventana configurable | ✅ Implementado, con parámetros `window_low_pct`/`window_high_pct` | [`src/models/tbpr.py`](src/models/tbpr.py) |
+| **Búsqueda de hiperparámetros T-BPR** (rolling validation) | ✅ Implementado | [`src/tune_tbpr.py`](src/tune_tbpr.py) |
+| **Análisis de sensibilidad** sobre intervalo W_u | ✅ Implementado | [`src/sensitivity_analysis.py`](src/sensitivity_analysis.py) |
+| **Evaluación escalada** (992 usuarios, submuestreo) | ✅ Implementado | [`src/run_scaled_evaluation.py`](src/run_scaled_evaluation.py) |
+| **PISA** (aproximación reproducible, RecSys 2024) | ✅ Implementado (ACT-R + contexto + popularidad) | [`src/models/pisa.py`](src/models/pisa.py) |
+| **RepeatNet** (aproximación reproducible, AAAI 2019) | ✅ Implementado (gate repeat/explore) | [`src/models/repeatnet.py`](src/models/repeatnet.py) |
 | Runner consolidado con `run_id` compartido | ✅ Implementado | [`src/run_all_models.py`](src/run_all_models.py) |
-| Preprocesamiento Amazon Grocery | 🔧 Pendiente (semana 1 del cronograma a H3) | — |
+| **Modelo Híbrido Repeat/Explore** | 🔮 Trabajo futuro — diseño formalizado en §7.1 del paper | `docs/Informe_Final.md` §7.1 |
+| Preprocesamiento Amazon Grocery | 🔮 Trabajo futuro — §7.2 del paper | `docs/Informe_Final.md` §7.2 |
 
 ---
 
@@ -90,37 +94,45 @@ Hallazgos críticos (detalle en [`docs/H2_Midterm.md`](docs/H2_Midterm.md) §4.3
 
 ```text
 Analisis-Last.fm-1K-Users/
-├── data/                                # Datasets crudos y procesados (ignorado por git)
-│   ├── userid-timestamp-artid-artname-traid-traname.tsv   # TSV original 2.5 GB (no versionado)
-│   ├── lastfm_1k_complete_fixed.parquet                   # Dataset completo limpio (no versionado)
-│   ├── lastfm_100_users_h1_fixed.parquet                  # Subset H1 (no versionado)
-│   ├── baselines_results.csv                              # Métricas agregadas por modelo
-│   ├── baselines_hits.csv                                 # Detalle por hit (user_id, rank)
-│   ├── repeat_advanced_results.csv                        # Métricas de TemporalBPR, PISA y RepeatNet
-│   ├── tbpr_results.csv                                   # Métricas de TemporalBPR standalone
-│   └── all_models_results.csv                             # Consolidado de todos los modelos
+├── data/                                      # Datasets procesados y resultados (ignorado por git)
+│   ├── lastfm_1k_complete_fixed.parquet       # Dataset completo (992 usuarios, 375 MB)
+│   ├── lastfm_100_users_h1_fixed.parquet      # Subset H1 (100 usuarios, 4.4 MB)
+│   ├── baselines_results.csv                  # Métricas baselines
+│   ├── repeat_advanced_results.csv            # Métricas T-BPR, PISA, RepeatNet
+│   ├── tbpr_tuning_results.csv                # Grid de hiperparámetros T-BPR
+│   ├── tbpr_best_config.json                  # Mejor configuración T-BPR
+│   ├── sensitivity_interval_results.csv       # Sensibilidad al intervalo W_u
+│   ├── scaled_eval_per_round.csv              # Evaluación escalada por ronda
+│   └── scaled_eval_summary.csv               # Resumen promedio evaluación escalada
 ├── notebooks/
-│   ├── preprocessing.ipynb              # Notebook original de H1 (exploratorio)
-│   ├── preprocessing.py                 # Pipeline chunked reproducible (2 pasadas, < 1 GB RAM)
-│   └── eda_figures.py                   # Regenera figuras del EDA y la correlación Spearman
+│   ├── preprocessing.ipynb                    # Notebook exploratorio H1
+│   ├── preprocessing.py                       # Pipeline chunked reproducible
+│   └── eda_figures.py                         # Figuras EDA y correlación Spearman
 ├── src/
 │   ├── models/
 │   │   ├── __init__.py
-│   │   └── baselines.py                 # RandomRecommender, MostPopularRecommender,
-│   │                                    # SimpleRepeatRecommender, SimpleRepeatRecencyRecommender
-│   ├── evaluation.py                    # temporal_loo_split + evaluate_recommender
-│   ├── utils.py                         # Métricas: recall@k, nDCG@k, MRR, repeat_ratio
-│   ├── run_baselines.py                 # Runner de baselines
-│   ├── run_repeat_advanced.py           # Compara TemporalBPR vs PISA vs RepeatNet
-│   ├── run_tbpr.py                      # Evalúa TemporalBPR standalone
-│   └── run_all_models.py                # Orquesta todas las corridas con run_id compartido
+│   │   ├── baselines.py                       # Random, MostPopular, SimpleRepeat-Freq/Recency
+│   │   ├── tbpr.py                            # T-BPR con ventana configurable
+│   │   ├── pisa.py                            # Aproximación reproducible de PISA
+│   │   └── repeatnet.py                       # Aproximación reproducible de RepeatNet
+│   ├── evaluation.py                          # temporal_loo_split + evaluate_recommender
+│   ├── utils.py                               # recall@k, nDCG@k, MRR, repeat_ratio
+│   ├── tbpr_config.py                         # Configuración por defecto de T-BPR
+│   ├── run_baselines.py                       # Runner baselines
+│   ├── run_repeat_advanced.py                 # Compara T-BPR vs PISA vs RepeatNet
+│   ├── run_tbpr.py                            # Evalúa T-BPR standalone
+│   ├── run_all_models.py                      # Orquesta todas las corridas
+│   ├── tune_tbpr.py                           # Búsqueda de hiperparámetros rolling
+│   ├── sensitivity_analysis.py                # Sensibilidad al intervalo W_u
+│   └── run_scaled_evaluation.py              # Evaluación escalada 992 usuarios
 ├── docs/
-│   ├── H2_Midterm.md                    # Informe intermedio H2 (fuente Markdown)
-│   ├── H2_Midterm.docx                  # Informe intermedio H2 (versión Word editable, .gitignored)
-│   └── figures/                         # PNGs del EDA referenciados desde el informe
-├── README.md                            # Este archivo
-├── requirements.txt                     # pandas, numpy, pyarrow
-└── .gitignore                           # Excluye data/, .venv/, *.docx, *:Zone.Identifier
+│   ├── Informe_Final.md                       # Paper final H3
+│   ├── H2_Midterm.md                          # Informe intermedio H2
+│   ├── Poster RecSys.pdf                      # Póster H4
+│   └── figures/                               # PNGs del EDA y análisis de sensibilidad
+├── README.md
+├── requirements.txt
+└── .gitignore
 ```
 
 ---
@@ -214,7 +226,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Obtener el dataset.** El TSV original de Last.fm 1K Users debe descargarse manualmente (no se versiona por tamaño) y colocarse en `data/`. Alternativamente, definir la variable `LASTFM_1K_DIRNAME` apuntando al directorio que lo contenga.
+**Obtener el dataset.** El TSV original de Last.fm 1K Users debe descargarse manualmente (no se versiona por tamaño) y colocarse en `data/`.
 
 **Paso 1 — Preprocesamiento (≈ 1 minuto):**
 
@@ -226,97 +238,74 @@ Genera en `data/`:
 - `lastfm_1k_complete_fixed.parquet` (375 MB, 19 098 853 filas, 992 usuarios)
 - `lastfm_100_users_h1_fixed.parquet` (4.4 MB, 200 000 filas, top-100 usuarios × tail 2 000)
 
-El pipeline opera en dos pasadas chunked (1 M filas/chunk), descarta las columnas `artist_id` y `track_id`, y escribe Parquet incremental con `pyarrow`. Peak de memoria < 1 GB; tiempo total ≈ 67 s en un WSL2 con 7.6 GB RAM.
-
 **Paso 2 — Evaluación de baselines (≈ 15 segundos):**
 
 ```bash
 python src/run_baselines.py
 ```
 
-Genera en `data/`:
-- `baselines_results.csv` — métricas agregadas por modelo.
-- `baselines_hits.csv` — detalle por usuario en el que cada modelo acertó (incluye rank).
-
-**Paso 2b — Comparación avanzada (T-BPR vs PISA vs RepeatNet):**
+**Paso 3 — Comparación avanzada (T-BPR vs PISA vs RepeatNet):**
 
 ```bash
 python src/run_repeat_advanced.py
 ```
 
-Genera en `data/`:
-- `repeat_advanced_results.csv` — métricas agregadas para TemporalBPR, PISA y RepeatNet.
-- `repeat_advanced_hits.csv` — detalle por usuario de los hits por modelo.
-
-**Paso 2c — Evaluación standalone de Temporal BPR:**
+**Paso 4 — Búsqueda de hiperparámetros de T-BPR (rolling validation):**
 
 ```bash
-python src/run_tbpr.py
+python src/tune_tbpr.py
 ```
 
-Genera en `data/`:
-- `tbpr_results.csv` — métricas agregadas de TemporalBPR.
-- `tbpr_hits.csv` — detalle por usuario de hits de TemporalBPR.
+Genera `data/tbpr_tuning_results.csv` y `data/tbpr_best_config.json`.
 
-**Paso 2d (recomendado) — corrida consolidada con `run_id` compartido:**
+**Paso 5 — Análisis de sensibilidad sobre el intervalo W_u:**
+
+```bash
+python src/sensitivity_analysis.py
+```
+
+Genera `data/sensitivity_interval_results.csv` y (si matplotlib está disponible) `docs/figures/fig_sensitivity_interval.png`.
+
+**Paso 6 — Evaluación escalada sobre los 992 usuarios:**
+
+```bash
+python src/run_scaled_evaluation.py
+```
+
+Genera `data/scaled_eval_per_round.csv` y `data/scaled_eval_summary.csv`.  
+Requiere que `data/lastfm_1k_complete_fixed.parquet` exista (Paso 1).
+
+**Paso 7 (opcional) — Corrida consolidada con `run_id` compartido:**
 
 ```bash
 python src/run_all_models.py
 ```
 
-Genera/actualiza en conjunto:
-- `baselines_results.csv`
-- `baselines_hits.csv`
-- `repeat_advanced_results.csv`
-- `repeat_advanced_hits.csv`
-- `tbpr_results.csv`
-- `tbpr_hits.csv`
-- `all_models_results.csv`
-
-Los números reproducidos deben coincidir con la tabla de §3 de este README.
-
-**Paso 3 — Regenerar figuras del EDA y correlación de Spearman (≈ 10 segundos):**
+**Paso 8 — Regenerar figuras del EDA:**
 
 ```bash
 python notebooks/eda_figures.py
-```
-
-Genera 3 PNGs en `docs/figures/` (repeat ratio, intervalos, ítems únicos) e imprime el coeficiente de Spearman entre frecuencia histórica y probabilidad de reaparición (operacionalización del OE1 del H1).
-
-**Paso 4 — Regenerar el informe en Word (opcional):**
-
-```bash
-pip install pypandoc-binary
-python -c "import pypandoc; pypandoc.convert_file('docs/H2_Midterm.md', 'docx', outputfile='docs/H2_Midterm.docx', extra_args=['--standalone', '--toc', '--toc-depth=2'])"
 ```
 
 ---
 
 ## 9. Documentos del curso
 
-Sección de referencia histórica de entregables del curso.
-
 * **H1 — Propuesta (entregada, 80/100):** PDF entregado vía Canvas (no versionado).
-* **H2 — Informe Intermedio (entregado, 2026-06-05):**
-  - Fuente Markdown: [`docs/H2_Midterm.md`](docs/H2_Midterm.md)
-  - Versión Word: [`docs/H2_Midterm.docx`](docs/H2_Midterm.docx)
-* **H3 — Paper (en desarrollo, entrega 2026-07-07):** formato ACM/ICML/NeurIPS, máx. 8 páginas.
-* **H4 — Póster (planificado, sesión presencial 2026-07-02)**.
+* **H2 — Informe Intermedio (entregado, 68/70, 2026-06-05):** [`docs/H2_Midterm.md`](docs/H2_Midterm.md).
+* **H3 — Paper Final (entregado, 2026-07-07):** [`docs/Informe_Final.md`](docs/Informe_Final.md). Incluye comparación de modelos, búsqueda de hiperparámetros, análisis de sensibilidad y evaluación escalada.
+* **H4 — Póster (sesión presencial 2026-07-02):** [`docs/Poster RecSys.pdf`](docs/Poster%20RecSys.pdf). Nota: el diagrama del modelo híbrido incluido en el poster fue generado con asistencia de IA generativa.
 
 ---
 
 ## 10. Cronograma y entregables
 
-Actualizado al 2026-06-30.
-
 | Hito | Fecha | Peso | Estado |
 |---|---|---|---|
-| H1 Propuesta | 2026-05-08 | 15 % | Entregada (80/100) |
-| H2 Midterm | 2026-06-05 | 25 % | Entregada |
-| H3 Paper | 2026-07-07 | 50 % | En desarrollo |
-| H4 Sesión Pósters | 2026-07-02 | 10 % | Planificado |
-
-Cronograma detallado de tareas hacia H3 en [`docs/H2_Midterm.md`](docs/H2_Midterm.md) §5.4.
+| H1 Propuesta | 2026-05-08 | 15 % | ✅ Entregada (80/100) |
+| H2 Midterm | 2026-06-05 | 25 % | ✅ Entregada (68/70) |
+| H3 Paper | 2026-07-07 | 50 % | ✅ Entregado |
+| H4 Sesión Pósters | 2026-07-02 | 10 % | ✅ Presentado |
 
 ---
 

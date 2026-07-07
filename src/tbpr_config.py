@@ -26,6 +26,8 @@ DEFAULT_TBPR_CONFIG: Dict[str, Any] = {
     "target_repeat_ratio": 0.35,
     "calibration_strength": 1.0,
     "calibration_iterations": 16,
+    "window_low_pct": 25,
+    "window_high_pct": 75,
     "verbose": False,
 }
 
@@ -36,6 +38,8 @@ _INT_KEYS = {
     "max_recent_boost",
     "hard_negative_pool",
     "calibration_iterations",
+    "window_low_pct",
+    "window_high_pct",
 }
 
 _FLOAT_KEYS = {
