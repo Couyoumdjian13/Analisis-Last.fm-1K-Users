@@ -226,17 +226,21 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-**Obtener el dataset.** El TSV original de Last.fm 1K Users debe descargarse manualmente (no se versiona por tamaño) y colocarse en `data/`.
+**Obtener el dataset.** Los datos no se versionan por tamaño (`data/` y `*.parquet` están en `.gitignore`). Descarga el tarball oficial de Last.fm 1K Users (`lastfm-dataset-1K.tar.gz`, ~600 MB) desde el [repositorio oficial](http://ocelma.net/MusicRecommendationDataset/lastfm-1K.html), extráelo y coloca el TSV crudo en `data/` con su nombre original:
 
-**Paso 1 — Preprocesamiento (≈ 1 minuto):**
+```
+data/userid-timestamp-artid-artname-traid-traname.tsv   (~2.5 GB, 19 098 853 filas)
+```
+
+**Paso 1 — Preprocesamiento (≈ 70 s, < 1 GB RAM):**
 
 ```bash
 python notebooks/preprocessing.py
 ```
 
-Genera en `data/`:
-- `lastfm_1k_complete_fixed.parquet` (375 MB, 19 098 853 filas, 992 usuarios)
-- `lastfm_100_users_h1_fixed.parquet` (4.4 MB, 200 000 filas, top-100 usuarios × tail 2 000)
+Genera en `data/` los **dos parquets que consumen todos los scripts siguientes** (prerequisito obligatorio):
+- `lastfm_1k_complete_fixed.parquet` (≈ 375 MB, 19 098 853 filas, 992 usuarios) — requerido por el Paso 6.
+- `lastfm_100_users_h1_fixed.parquet` (≈ 4.4 MB, 200 000 filas, top-100 usuarios × tail 2 000) — requerido por los Pasos 2–5.
 
 **Paso 2 — Evaluación de baselines (≈ 15 segundos):**
 
@@ -250,30 +254,35 @@ python src/run_baselines.py
 python src/run_repeat_advanced.py
 ```
 
-**Paso 4 — Búsqueda de hiperparámetros de T-BPR (rolling validation):**
+**Paso 4 — Búsqueda de hiperparámetros de T-BPR (rolling validation) — ≈ 70 min en CPU:**
 
 ```bash
 python src/tune_tbpr.py
 ```
 
-Genera `data/tbpr_tuning_results.csv` y `data/tbpr_best_config.json`.
+- **Requiere:** `data/lastfm_100_users_h1_fixed.parquet` (Paso 1).
+- **Genera:** `data/tbpr_tuning_results.csv` (grid completo, 6 configs) y `data/tbpr_best_config.json` (config ganadora, consumida por el Paso 6).
+- **Tiempo:** evalúa 6 configuraciones × 3 folds rolling (offsets {2,3,4}); cada entrenamiento de T-BPR tarda ~150–320 s según `factors`/`epochs`, para un total de ≈ 70 min. Acepta `--max-configs N` y `--fold-offsets a,b,c` para acotar la corrida.
 
-**Paso 5 — Análisis de sensibilidad sobre el intervalo W_u:**
+**Paso 5 — Análisis de sensibilidad sobre el intervalo W_u — ≈ 4 h en CPU (barrido completo):**
 
 ```bash
 python src/sensitivity_analysis.py
 ```
 
-Genera `data/sensitivity_interval_results.csv` y (si matplotlib está disponible) `docs/figures/fig_sensitivity_interval.png`.
+- **Requiere:** `data/lastfm_100_users_h1_fixed.parquet` (Paso 1).
+- **Genera:** `data/sensitivity_interval_results.csv` y (si matplotlib está disponible) `docs/figures/fig_sensitivity_interval.png`.
+- **Tiempo:** entrena T-BPR con la config por defecto en las 49 combinaciones válidas `(p_low, p_high)`, a ~300 s cada una (≈ 4 h en total). Es el paso más costoso; ejecutar solo si se necesita el mapa de calor de §5.3.
 
-**Paso 6 — Evaluación escalada sobre los 992 usuarios:**
+**Paso 6 — Evaluación escalada sobre los 992 usuarios — ≈ 30–60 min en CPU:**
 
 ```bash
 python src/run_scaled_evaluation.py
 ```
 
-Genera `data/scaled_eval_per_round.csv` y `data/scaled_eval_summary.csv`.  
-Requiere que `data/lastfm_1k_complete_fixed.parquet` exista (Paso 1).
+- **Requiere:** `data/lastfm_1k_complete_fixed.parquet` (Paso 1) **y** `data/tbpr_best_config.json` (Paso 4; si falta, usa la config por defecto de `tbpr_config.py`).
+- **Genera:** `data/scaled_eval_per_round.csv` y `data/scaled_eval_summary.csv`.
+- **Tiempo:** 5 rondas × 100 usuarios muestreados × 5 modelos; el costo lo domina T-BPR (5 reentrenamientos). Ajustable vía las constantes `N_SAMPLE`, `N_ROUNDS` en el script.
 
 **Paso 7 (opcional) — Corrida consolidada con `run_id` compartido:**
 

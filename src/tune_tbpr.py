@@ -198,7 +198,10 @@ def temporal_rolling_valid_splits(
 
 def _build_tbpr(cfg: Dict[str, float]) -> TemporalBPRRecommender:
     full_cfg = dict(DEFAULT_TBPR_CONFIG)
-    full_cfg.update(cfg)
+    # Solo tomamos claves de configuracion validas: la fila ganadora del grid
+    # arrastra columnas de metricas (rolling_*, eval_seconds, delta_*) que no
+    # son argumentos del constructor de TemporalBPRRecommender.
+    full_cfg.update({k: v for k, v in cfg.items() if k in DEFAULT_TBPR_CONFIG})
     full_cfg = normalize_tbpr_config(full_cfg)
     return TemporalBPRRecommender(**full_cfg)
 

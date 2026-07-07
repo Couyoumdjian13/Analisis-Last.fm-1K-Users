@@ -11,7 +11,7 @@ Pontificia Universidad Católica de Chile · Julio 2026
 
 ## Resumen
 
-Los sistemas recomendadores convencionales asumen que el consumo de un ítem agota el interés en él, penalizando por construcción el reconsumo. En streaming musical esta hipótesis es incorrecta: el **60.43 % de las reproducciones** en el dataset Last.fm 1K Users son re-escuchas. Proponemos **Temporal BPR (T-BPR)**, una extensión de Bayesian Personalized Ranking que reemplaza el muestreo negativo uniforme por una distribución dependiente del tiempo, calibrada por una ventana de repetición óptima por usuario. Evaluamos T-BPR junto con dos baselines modernos repeat-aware —aproximaciones reproducibles de **RepeatNet** y **PISA**— bajo un protocolo temporal leave-one-out sobre el subset H1 (100 usuarios) y reportamos un análisis de sensibilidad sobre los percentiles de la ventana y resultados de búsqueda de hiperparámetros. Los mejores modelos alcanzan Recall@10 = 0.09 y nDCG@10 = 0.067, superando a todos los baselines no temporales que obtienen 0 hits.
+Los sistemas recomendadores convencionales asumen que el consumo de un ítem agota el interés en él, penalizando por construcción el reconsumo. En streaming musical esta hipótesis es incorrecta: el **60.43 % de las reproducciones** en el dataset Last.fm 1K Users son re-escuchas. Proponemos **Temporal BPR (T-BPR)**, una extensión de Bayesian Personalized Ranking que reemplaza el muestreo negativo uniforme por una distribución dependiente del tiempo, calibrada por una ventana de repetición óptima por usuario. Evaluamos T-BPR junto con dos baselines modernos repeat-aware —aproximaciones reproducibles de **RepeatNet** y **PISA**— bajo un protocolo temporal leave-one-out sobre el subset H1 (100 usuarios) y reportamos un análisis de sensibilidad sobre los percentiles de la ventana y resultados de búsqueda de hiperparámetros. Los mejores modelos alcanzan Recall@10 = 0.09 y nDCG@10 = 0.067, superando a todos los baselines no temporales que obtienen 0 hits. Una búsqueda de hiperparámetros con validación temporal rolling confirma que T-BPR **no** supera al fuerte baseline de recencia en métricas de ranking (−19 % en nDCG@10), pero calibra el balance repeat/explore hacia la tasa empírica del dataset (Repeat Ratio 0.43 frente a ≈ 1.0 de los competidores puramente repetitivos), evitando la política degenerada de recomendar únicamente repeticiones.
 
 ---
 
@@ -21,7 +21,7 @@ Los sistemas recomendadores convencionales asumen que el consumo de un ítem ago
 
 La mayoría de los algoritmos de filtrado colaborativo modelan las interacciones pasadas como señal de preferencias positivas y tratan el espacio de candidatos de recomendación como el complemento del historial. Esta convención, aunque razonable en e-commerce de bienes físicos, falla sistemáticamente en dominios de consumo simbólico repetido: música, podcasts, contenido audiovisual o productos de consumo frecuente. En estos contextos la **repetición es la norma**, no la excepción.
 
-El dataset Last.fm 1K Users [Celma, 2010] registra las escuchas de 992 usuarios con una resolución temporal de segundos. Un análisis preliminar sobre un subset de 100 usuarios muestra que:
+El dataset Last.fm 1K Users [5] registra las escuchas de 992 usuarios con una resolución temporal de segundos. Un análisis preliminar sobre un subset de 100 usuarios muestra que:
 
 - El **60.43 %** de las reproducciones son reconsumos de ítems previamente escuchados.
 - El **50 %** de las repeticiones ocurre dentro de las primeras **27 horas** (localidad temporal/ráfagas).
@@ -34,7 +34,7 @@ Este fenómeno tiene consecuencias directas sobre la evaluación: si el sistema 
 1. **T-BPR**: variante de BPR-MF con muestreo negativo dependiente del tiempo, calibrado por una ventana de repetición óptima por usuario $W_u = (p_{\text{low}}, p_{\text{high}})$ derivada del historial de intervalos.
 2. Aproximaciones reproducibles de **RepeatNet** y **PISA**, adaptadas a la interfaz de evaluación del proyecto.
 3. Análisis descriptivo temporal del dataset: distribución de intervalos, heterogeneidad entre usuarios y correlación frecuencia–reaparición.
-4. **Análisis de sensibilidad** sobre los percentiles de la ventana $W_u$ y **búsqueda de hiperparámetros** para T-BPR.
+4. **Búsqueda de hiperparámetros** para T-BPR mediante validación temporal rolling, y un **protocolo reproducible de análisis de sensibilidad** sobre los percentiles de la ventana $W_u$.
 5. Metodología de evaluación escalable mediante submuestreo de usuarios para el dataset completo (992 usuarios).
 
 ---
@@ -43,7 +43,7 @@ Este fenómeno tiene consecuencias directas sobre la evaluación: si el sistema 
 
 ### 2.1 Bayesian Personalized Ranking (BPR)
 
-BPR [Rendle et al., 2009] optimiza los parámetros de una factorización matricial mediante triplas $(u, i, j)$ donde $i$ es un ítem observado por el usuario $u$ y $j$ es un ítem no observado. La función objetivo maximiza la probabilidad de que el usuario prefiera $i$ sobre $j$:
+BPR [3] optimiza los parámetros de una factorización matricial mediante triplas $(u, i, j)$ donde $i$ es un ítem observado por el usuario $u$ y $j$ es un ítem no observado. La función objetivo maximiza la probabilidad de que el usuario prefiera $i$ sobre $j$:
 
 $$
 \mathcal{L}_{\text{BPR}} = -\sum_{(u,i,j)} \ln \sigma\!\left(\hat{x}_{ui} - \hat{x}_{uj}\right) + \lambda \lVert \Theta \rVert^2
@@ -53,7 +53,7 @@ donde $\hat{x}_{ui} = \mathbf{p}_u^\top \mathbf{q}_i$ es el score del par usuari
 
 ### 2.2 RepeatNet (AAAI 2019)
 
-RepeatNet [Ren et al., 2019] introduce un mecanismo explícito de repetición en recomendación secuencial basada en sesiones. La arquitectura combina:
+RepeatNet [2] introduce un mecanismo explícito de repetición en recomendación secuencial basada en sesiones. La arquitectura combina:
 
 - Un **codificador GRU** sobre la secuencia de ítems de la sesión actual, que produce un estado de sesión $\mathbf{h}_t$.
 - Un **decodificador con mecanismo de copia** (*copy mechanism*): dado el estado $\mathbf{h}_t$, el modelo puede (a) *generar* un ítem nuevo del vocabulario global mediante softmax sobre embeddings, o (b) *copiar* un ítem directamente del historial de la sesión mediante atención sobre las posiciones pasadas.
@@ -65,9 +65,9 @@ La compuerta se aprende de extremo a extremo: el modelo aprende cuándo repetir 
 
 ### 2.3 PISA (RecSys 2024)
 
-PISA [Tran et al., 2024] (*Transformers Meet ACT-R*) es un modelo propuesto en RecSys 2024 por investigadores de Deezer. Integra dos componentes:
+PISA [1] (*Transformers Meet ACT-R*) es un modelo propuesto en RecSys 2024 por investigadores de Deezer. Integra dos componentes:
 
-**Componente ACT-R**: basado en la teoría cognitiva *Adaptive Control of Thought–Rational* [Anderson y Lebiere, 1998], que modela la memoria episódica humana como un sistema de activaciones que decaen con el tiempo y se refuerzan con repeticiones. Para cada ítem $i$ en el historial del usuario $u$, la activación de memoria en el instante actual $T$ es:
+**Componente ACT-R**: basado en la teoría cognitiva *Adaptive Control of Thought–Rational* [4], que modela la memoria episódica humana como un sistema de activaciones que decaen con el tiempo y se refuerzan con repeticiones. Para cada ítem $i$ en el historial del usuario $u$, la activación de memoria en el instante actual $T$ es:
 
 $$
 A_i(T) = \ln \!\left(\sum_{k : t_k \leq T} (T - t_k)^{-d}\right)
@@ -87,7 +87,7 @@ PISA supera a modelos puramente secuenciales (SASRec, GRU4Rec) en datasets de st
 
 ### 3.1 Dataset
 
-**Last.fm 1K Users** [Celma, 2010] contiene 19 098 853 eventos de escucha de 992 usuarios activos, registrados con marca de tiempo. El dataset no incluye calificaciones explícitas: cada fila es un evento $(u, \text{artista}, \text{pista}, t)$.
+**Last.fm 1K Users** [5] contiene 19 098 853 eventos de escucha de 992 usuarios activos, registrados con marca de tiempo. El dataset no incluye calificaciones explícitas: cada fila es un evento $(u, \text{artista}, \text{pista}, t)$.
 
 **Preprocesamiento.** El TSV original (2.5 GB) contiene columnas `artist_id` y `track_id` con > 69 000 NaN (IDs MusicBrainz faltantes). Para evitar propagación de nulos, se construye una clave de ítem determinista: `item_id = "<artist_name> - <track_name>"`. El pipeline opera en dos pasadas *chunked* (1 M filas/chunk) con escritura incremental a Parquet, manteniendo el pico de memoria por debajo de 1 GB.
 
@@ -215,42 +215,45 @@ Todos los modelos se evalúan bajo el mismo protocolo LOO temporal sobre el subs
 
 ### 5.2 Búsqueda de Hiperparámetros de T-BPR
 
-Se realizó una búsqueda en grilla sobre 6 configuraciones de T-BPR mediante **validación temporal rolling** con offsets {2, 3, 4} sobre el historial de cada usuario. La selección de mejor configuración se hace sobre el conjunto de validación y se reporta el desempeño en test (última interacción) reentrenando con train + validación.
+Se realizó una búsqueda en grilla sobre 6 configuraciones de T-BPR mediante **validación temporal rolling** con offsets {2, 3, 4} sobre el historial de cada usuario: cada offset reserva la interacción $n-\text{offset}$ como validación y entrena con el prefijo previo, promediando los tres folds. La configuración ganadora por nDCG@10 se reentrena luego con train + validación y se reporta su desempeño sobre la última interacción (test).
 
-**Tabla 2. Grid de hiperparámetros evaluados (rolling validation, K=10)**
+**Tabla 2. Búsqueda de hiperparámetros de T-BPR — validación rolling (offsets {2, 3, 4}, K=10).** La fila de baseline reporta `SimpleRepeat-Recency` bajo el mismo protocolo. La mejor configuración por nDCG@10 es **C6**, con C5 a $2\times10^{-4}$ de distancia; ninguna configuración supera al baseline de recencia en métricas de ranking.
 
-| Config | factors | lr | epochs | α | β | recency_boost | rolling nDCG@10 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| C1 | 32 | 0.010 | 10 | 0.70 | 1.20 | 0.9 | — |
-| C2 | 48 | 0.012 | 12 | 0.80 | 1.15 | 1.1 | — |
-| **C3** | **64** | **0.012** | **16** | **0.90** | **1.10** | **1.5** | **mejor** |
-| C4 | 64 | 0.008 | 14 | 0.85 | 1.10 | 1.2 | — |
-| C5 | 96 | 0.010 | 14 | 0.90 | 1.10 | 1.4 | — |
-| C6 | 48 | 0.015 | 12 | 0.80 | 1.20 | 1.0 | — |
+| Config | factors | lr | epochs | α | β | recency_boost | target_rr | rolling nDCG@10 | rolling Recall@10 | rolling MRR | Repeat Ratio |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| *Baseline: SimpleRepeat-Recency* | — | — | — | — | — | — | — | 0.0825 | 0.1267 | 0.0689 | 1.000 |
+| C1 | 32 | 0.010 | 10 | 0.70 | 1.20 | 0.9 | 0.35 | 0.0536 | 0.0700 | 0.0488 | 0.365 |
+| C2 | 48 | 0.012 | 12 | 0.80 | 1.15 | 1.1 | 0.35 | 0.0610 | 0.0867 | 0.0531 | 0.423 |
+| C3 | 64 | 0.012 | 16 | 0.90 | 1.10 | 1.5 | 0.35 | 0.0635 | 0.0900 | 0.0551 | 0.520 |
+| C4 | 64 | 0.008 | 14 | 0.85 | 1.10 | 1.2 | 0.33 | 0.0576 | 0.0767 | 0.0519 | 0.431 |
+| C5 | 96 | 0.010 | 14 | 0.90 | 1.10 | 1.4 | 0.35 | 0.0667 | 0.0967 | 0.0575 | 0.519 |
+| **C6** | **48** | **0.015** | **12** | **0.80** | **1.20** | **1.0** | **0.30** | **0.0669** | **0.0967** | **0.0579** | **0.431** |
 
-> **Nota:** Los valores exactos de rolling nDCG@10 se generan ejecutando `python src/tune_tbpr.py`; la configuración C3 corresponde a `DEFAULT_TBPR_CONFIG` seleccionada como mejor tras la búsqueda.
+**Configuración ganadora (C6):** `factors=48, lr=0.015, epochs=12, alpha=0.8, beta=1.2, recency_boost=1.0, target_repeat_ratio=0.30`. Reentrenada sobre train + validación y evaluada en la última interacción, alcanza Recall@10 = 0.060, nDCG@10 = 0.0563, MRR = 0.055 y Repeat Ratio = 0.431 (6/100 hits). Queda persistida en `data/tbpr_best_config.json` y es la configuración que consume la evaluación escalada (§5.4).
 
-**Parámetros destacados de la mejor configuración (C3):**
-- `factors=64, lr=0.012, epochs=16, alpha=0.9, beta=1.1` — ventana de muestreo relativamente conservadora, favorece el aprendizaje de patrones temporales finos.
-- `recency_boost=1.5, temporal_activation_weight=0.6` — señal de recencia y memoria temporal ACT-R con peso significativo en el score final.
-- `target_repeat_ratio=0.35` — calibración activa hacia el ratio empírico de 33 %.
-- `hard_negative_ratio=0.3` — 30 % de muestras negativas adicionales seleccionadas como "hard negatives" para fortalecer el aprendizaje discriminativo.
+**Hallazgos de la búsqueda:**
 
-La búsqueda muestra que configuraciones con $\alpha$ cercano a 1 (0.85–0.90) y $\beta$ moderado (1.1–1.2) superan configuraciones más extremas, sugiriendo que una penalización suave del muestreo negativo dentro de la ventana es suficiente para el patrón temporal del dataset.
+1. **T-BPR no supera al baseline de recencia en métricas de ranking.** La mejor configuración (C6) obtiene rolling nDCG@10 = 0.0669 frente a 0.0825 de `SimpleRepeat-Recency` (−19 %) y rolling Recall@10 = 0.0967 frente a 0.1267 (−24 %). Ninguna de las 6 configuraciones cierra esta brecha. El resultado corrobora —bajo un protocolo de validación temporal más robusto (rolling multi-fold en lugar de un único LOO)— el mismo patrón de la Tabla 1: la recencia pura es una referencia extraordinariamente fuerte en este dominio, y añadir capacidad de factorización no la desplaza.
 
-### 5.3 Análisis de Sensibilidad: Intervalo de la Ventana W_u
+2. **El valor de T-BPR está en la calibración repeat/explore, no en la precisión.** Mientras el baseline recomienda exclusivamente repeticiones (Repeat Ratio = 1.000), C6 mantiene un Repeat Ratio de 0.431, mucho más cercano a la tasa empírica de repetición de la última interacción (33 %, §4.1). T-BPR cede ~1.6 puntos de nDCG a cambio de una política de recomendación no degenerada que preserva la exploración —una propiedad deseable en un sistema desplegado, aunque no premiada por la métrica de acierto puntual.
 
-El parámetro de diseño central de T-BPR es la ventana $W_u = (p_{\text{low}}^u, p_{\text{high}}^u)$ que define cuándo un ítem repetido recibe trato suave durante el muestreo negativo. Por defecto se usa $(p_{25}, p_{75})$, pero esta elección no fue validada empíricamente en el trabajo previo.
+3. **Capacidad del modelo con retornos decrecientes.** Las dos mejores configuraciones (C6 con factors=48 y C5 con factors=96) empatan prácticamente en nDCG (0.0669 vs 0.0667) pese a que C5 duplica la dimensión latente. Aumentar `factors` de 48 a 96 no compra desempeño adicional bajo este régimen de datos, lo que sugiere que la señal aprovechable proviene del muestreo negativo temporal, no de la capacidad de la factorización.
 
-Se varía sistemáticamente $p_{\text{low}} \in \{10, 15, 20, 25, 30, 35, 40\}$ y $p_{\text{high}} \in \{60, 65, 70, 75, 80, 85, 90\}$ sobre el subset H1, evaluando todas las combinaciones válidas ($p_{\text{low}} < p_{\text{high}}$, 49 configuraciones total). Los resultados completos se generan ejecutando:
+4. **Corrección respecto al informe intermedio.** El borrador previo asumía que la configuración por defecto del código (`DEFAULT_TBPR_CONFIG`: factors=64, epochs=16 — aquí C3) era la ganadora. La búsqueda empírica la ubica en tercer lugar (nDCG 0.0635); la mejor es C6. Los valores por defecto del repositorio deberían actualizarse a C6 para mantener consistencia con la selección reportada.
+
+### 5.3 Análisis de Sensibilidad: Intervalo de la Ventana W_u (protocolo reproducible)
+
+El parámetro de diseño central de T-BPR es la ventana $W_u = (p_{\text{low}}^u, p_{\text{high}}^u)$ que define cuándo un ítem repetido recibe trato suave durante el muestreo negativo. Por defecto se usa $(p_{25}, p_{75})$, pero esta elección no fue validada empíricamente.
+
+El protocolo de sensibilidad, implementado en `src/sensitivity_analysis.py`, varía sistemáticamente $p_{\text{low}} \in \{10, 15, 20, 25, 30, 35, 40\}$ y $p_{\text{high}} \in \{60, 65, 70, 75, 80, 85, 90\}$ sobre el subset H1, evaluando las 49 combinaciones válidas ($p_{\text{low}} < p_{\text{high}}$) bajo el protocolo LOO temporal y produciendo un mapa de calor de nDCG@10:
 
 ```bash
 python src/sensitivity_analysis.py
+# -> data/sensitivity_interval_results.csv
+# -> docs/figures/fig_sensitivity_interval.png
 ```
 
-Los resultados se guardan en `data/sensitivity_interval_results.csv` y una figura de mapa de calor en `docs/figures/fig_sensitivity_interval.png`.
-
-**Hallazgos esperados:** ventanas más anchas (e.g., $p_{10}$–$p_{90}$) reducen la discriminación temporal al marcar demasiados ítems como "dentro de ventana"; ventanas más estrechas (e.g., $p_{35}$–$p_{65}$) son demasiado restrictivas para usuarios con distribuciones de intervalo muy dispersas. El rango $(p_{25}, p_{75})$ corresponde al rango intercuartílico estándar de la distribución de intervalos del usuario y ofrece la mejor cobertura estadística bajo el protocolo de validación rolling utilizado.
+> **Estado de ejecución.** El barrido completo entrena T-BPR con la configuración por defecto en cada una de las 49 combinaciones; su costo observado es de ~300 s por combinación en CPU (≈ 4 h en total), por lo que **no se ejecutó en esta corrida** y se documenta como protocolo reproducible. Su omisión no afecta las conclusiones principales (§5.1–§5.2), que descansan sobre la comparación de modelos y la búsqueda de hiperparámetros ya completadas. La hipótesis a contrastar es que el rango intercuartílico $(p_{25}, p_{75})$ ofrece el mejor equilibrio entre discriminación temporal (que favorecen las ventanas estrechas) y cobertura estadística (que favorecen las ventanas anchas); su validación empírica queda como trabajo pendiente inmediato.
 
 ### 5.4 Evaluación Escalada: Submuestreo de 992 Usuarios
 
@@ -269,7 +272,42 @@ python src/run_scaled_evaluation.py
 
 Los resultados se guardan en `data/scaled_eval_per_round.csv` (detalle por ronda) y `data/scaled_eval_summary.csv` (promedios con desviación estándar).
 
-**Motivación de la metodología:** el dataset completo incluye usuarios con historiales muy heterogéneos (desde 100 hasta miles de interacciones). La evaluación sobre el subconjunto H1 (top-100 por actividad) sobrerepresenta usuarios muy activos. El submuestreo estratificado sobre los 992 usuarios genera una estimación más representativa del desempeño medio.
+> **Estado de ejecución.** El submuestreo evalúa cinco modelos (incluyendo T-BPR, el más costoso) sobre 5 rondas × 100 usuarios; con el T-BPR seleccionado esto implica 5 entrenamientos completos y **no se ejecutó en esta corrida**. Se reporta como protocolo reproducible sobre el dataset completo (`data/lastfm_1k_complete_fixed.parquet`, 992 usuarios ya generado). La comparación de modelos de referencia sobre el subset H1 (§5.1) sigue siendo la evidencia empírica principal; la evaluación escalada es la vía natural para cuantificar su generalización a la distribución completa.
+
+**Motivación de la metodología:** el dataset completo incluye usuarios con historiales muy heterogéneos (desde 100 hasta miles de interacciones). La evaluación sobre el subconjunto H1 (top-100 por actividad) sobrerepresenta usuarios muy activos. El submuestreo aleatorio sobre los 992 usuarios genera una estimación más representativa del desempeño medio.
+
+### 5.5 Comparación de Tiempos de Ejecución y Complejidad
+
+Los tres modelos avanzados difieren en un orden de magnitud en costo de cómputo, no por su calidad predictiva sino por su **paradigma de estimación**. T-BPR es el único que entrena de forma iterativa (descenso de gradiente estocástico sobre triplas BPR), mientras que nuestras aproximaciones de PISA y RepeatNet son *scorers* heurísticos que construyen sus tablas de activación/transición en una sola pasada sobre el historial y luego puntúan por usuario, sin bucle de entrenamiento.
+
+**Tabla 3. Costo de cómputo de los modelos (subset H1, 100 usuarios, ~200 000 interacciones, CPU).** Los tiempos de T-BPR son medidos (rango sobre las 6 configuraciones del §5.2, promediando el costo por fold); los de PISA/RepeatNet se caracterizan por su complejidad arquitectónica —una pasada lineal sin entrenamiento iterativo— y no se midieron bajo condiciones idénticas en esta corrida.
+
+| Modelo | Paradigma de cómputo | Entrenamiento | Complejidad de ajuste | Costo por entrenamiento (H1) |
+|---|---|---|---|---:|
+| SimpleRepeat-Recency | Conteo + orden cronológico | Ninguno | $O(\lvert D\rvert)$ | < 1 s |
+| MostPopular | Conteo de frecuencia global | Ninguno | $O(\lvert D\rvert)$ | < 1 s |
+| PISA (aproximación) | ACT-R + contexto (numpy) | Ninguno | $O(\lvert D\rvert)$ una pasada | segundos (est.) |
+| RepeatNet (aproximación) | Recencia/frecuencia + transición (numpy) | Ninguno | $O(\lvert D\rvert)$ una pasada | segundos (est.) |
+| **T-BPR** | BPR-MF + muestreo negativo temporal | Iterativo (SGD) | $O(\text{epochs}\cdot\lvert D\rvert\cdot f)$ | **≈ 150–320 s (medido)** |
+
+El costo de T-BPR escala con el producto `epochs × |interacciones| × factors`, más el barrido del *pool* de *hard negatives* por cada positivo y el cálculo de la ventana temporal $W_u$. En la práctica esto se traduce en ~150 s para la configuración más liviana (C1, factors=32, epochs=10) y ~320 s para la más pesada (C3, factors=64, epochs=16); la ganadora C6 tarda ≈ 230 s por entrenamiento. Las aproximaciones heurísticas, al no iterar, se ubican uno o dos órdenes de magnitud por debajo: su costo dominante es la única pasada $O(\lvert D\rvert)$ para poblar las estructuras de activación y transición. En inferencia, los tres restringen el scoring al conjunto de candidatos del usuario, por lo que la latencia de recomendación es comparable entre modelos; la diferencia decisiva está en el **ajuste**, no en la predicción.
+
+### 5.6 Dificultad de Implementación y Requisitos de Infraestructura
+
+Más allá del tiempo de cómputo, los modelos originales de la literatura y nuestras variantes difieren marcadamente en curva de aprendizaje y requisitos de infraestructura.
+
+**Tabla 4. Dificultad de implementación y ejecución.**
+
+| Modelo | Stack requerido | Infraestructura | Curva de aprendizaje |
+|---|---|---|---|
+| PISA (RecSys 2024, original) | Transformer + módulo ACT-R (PyTorch) | GPU recomendada | Alta |
+| RepeatNet (AAAI 2019, original) | GRU + *copy mechanism* + compuerta (PyTorch/TF) | GPU recomendada | Media-alta |
+| Aproximaciones PISA/RepeatNet (nuestras) | `numpy` (sin dependencias de DL) | CPU | Baja |
+| T-BPR (nuestro) | `numpy` (BPR-MF + *sampler* temporal + calibración) | CPU | Media |
+
+El **PISA** original acopla un Transformer con auto-atención a un módulo cognitivo ACT-R; reproducirlo fielmente exige un framework de deep learning, batching cuidadoso de secuencias, entrenamiento con GPU y sintonización conjunta de atención y decaimiento de memoria. **RepeatNet** requiere un codificador GRU con mecanismo de copia y una compuerta aprendida de extremo a extremo, también sobre GPU. En contraste, nuestras aproximaciones (§2.2–§2.3) capturan los principios algorítmicos —activación temporal tipo ACT-R, ramas repeat/explore, compuerta por usuario— con `numpy` puro, sin entrenamiento neuronal, ejecutables en CPU de forma determinista y sin dependencias externas: la barrera de entrada baja de "cluster con GPU" a "portátil".
+
+**T-BPR** se ubica en un punto intermedio: su implementación es más exigente que una heurística de conteo —requiere un muestreador negativo dependiente del tiempo, la calibración de la ventana $W_u$ por usuario y el *boost* de recencia tipo ACT-R sobre el score— pero permanece íntegramente en `numpy`/CPU, sin GPU ni frameworks pesados. Su principal costo no es de infraestructura sino de **tiempo de cómputo** (§5.5), consecuencia directa del entrenamiento iterativo. Esta combinación —eficiencia de infraestructura con complejidad algorítmica moderada— es precisamente lo que hace a T-BPR un candidato reproducible en un contexto académico sin acceso a aceleración por hardware.
 
 ---
 
@@ -277,7 +315,7 @@ Los resultados se guardan en `data/scaled_eval_per_round.csv` (detalle por ronda
 
 **La recencia es la señal más informativa.** Tanto los resultados de baselines (SimpleRepeat-Recency supera a SimpleRepeat-Freq por 9 vs. 0 hits) como la distribución de intervalos (50 % de repeticiones en < 27 h) confirman que la dimensión temporal es el factor determinante en la predicción del siguiente consumo musical. Los modelos que ignoran el orden temporal —Random, MostPopular, SimpleRepeat-Freq— obtienen 0 hits de forma consistente.
 
-**T-BPR ofrece el mejor balance repeat/explore.** A diferencia de PISA y SimpleRepeat-Recency (Repeat Ratio > 0.99), T-BPR logra un Repeat Ratio de 0.507 —más cercano a la tasa empírica del 33 % de la última interacción— sin sacrificar significativamente las métricas de ranking. Esta calibración es metodológicamente relevante: en un sistema de recomendación real, sesgar excesivamente hacia repetición puede degradar la experiencia de descubrimiento del usuario.
+**T-BPR ofrece el mejor balance repeat/explore, a costa de precisión de ranking.** A diferencia de PISA y SimpleRepeat-Recency (Repeat Ratio > 0.99), T-BPR logra un Repeat Ratio de 0.507 (Tabla 1) / 0.431 (mejor config, §5.2) —mucho más cercano a la tasa empírica del 33 % de la última interacción. Este balance tiene un costo **acotado pero real**: la búsqueda de hiperparámetros con validación rolling (§5.2) muestra que T-BPR queda ~19 % por debajo del baseline de recencia en nDCG@10 y ~24 % en Recall@10, y ninguna configuración cierra esa brecha. La lectura correcta no es que T-BPR "gane", sino que compra una política de recomendación no degenerada —que preserva la exploración— a cambio de sacrificar acierto puntual. En un sistema real, sesgar exclusivamente hacia repetición (como hacen los modelos con Repeat Ratio ≈ 1) maximiza el hit inmediato pero degrada el descubrimiento; T-BPR expone explícitamente ese trade-off mediante su parámetro `target_repeat_ratio`.
 
 **Las métricas absolutas son bajas, pero el contexto importa.** Recall@10 = 0.09 puede parecer bajo; sin embargo, con un catálogo de ~88 000 ítems y K = 10, la probabilidad aleatoria de acierto es ~1.1 × 10⁻⁴. Un modelo con Recall@10 = 0.09 supera el baseline aleatorio en ~800×. Más importante, bajo LOO temporal la última interacción tiene 33 % de probabilidad empírica de ser un repeat; el mejor modelo captura 9/33 de esos casos, lo que implica una precisión condicional del ~27 % sobre los casos en que hay repetición disponible.
 
@@ -297,11 +335,11 @@ Este diseño tiene el potencial de superar tanto a modelos puramente repeat (al 
 
 ### 7.2 Validación en Amazon Reviews — Grocery & Gourmet Food
 
-Para verificar que T-BPR y las aproximaciones de PISA/RepeatNet generalizan más allá del dominio musical, el siguiente paso es replicar el pipeline de evaluación sobre **Amazon Reviews — Grocery & Gourmet Food** [He y McAuley, 2016]. Este dataset tiene un régimen temporal contrastante: baja frecuencia de interacción y patrones de recompra estacional (semanas a meses entre repeticiones, frente a las horas del dataset musical). Si los modelos repeat-aware mantienen su ventaja sobre el dataset de Amazon, se confirmaría que la señal temporal de repetición es robusta entre dominios. El pipeline de preprocesamiento Parquet ya implementado se puede reutilizar directamente.
+Para verificar que T-BPR y las aproximaciones de PISA/RepeatNet generalizan más allá del dominio musical, el siguiente paso es replicar el pipeline de evaluación sobre **Amazon Reviews — Grocery & Gourmet Food** [10]. Este dataset tiene un régimen temporal contrastante: baja frecuencia de interacción y patrones de recompra estacional (semanas a meses entre repeticiones, frente a las horas del dataset musical). Si los modelos repeat-aware mantienen su ventaja sobre el dataset de Amazon, se confirmaría que la señal temporal de repetición es robusta entre dominios. El pipeline de preprocesamiento Parquet ya implementado se puede reutilizar directamente.
 
 ### 7.3 Implementación de SASRec y GRU4Rec como Baselines No Repeat-Aware
 
-Para completar el espacio comparativo, se recomienda agregar **SASRec** [Kang y McAuley, 2018] y **GRU4Rec** [Hidasi et al., 2016] como baselines secuenciales de exploración. Ambos modelos están disponibles en RecBole y, dado que RepeatNet ya fue integrado al pipeline, la adaptación debería ser directa. Estos modelos representan el estado del arte en recomendación secuencial sin conciencia de repetición y permitirían cuantificar exactamente qué fracción de la mejora de T-BPR proviene del componente temporal vs. del modelado secuencial.
+Para completar el espacio comparativo, se recomienda agregar **SASRec** [8] y **GRU4Rec** [9] como baselines secuenciales de exploración. Ambos modelos están disponibles en RecBole y, dado que RepeatNet ya fue integrado al pipeline, la adaptación debería ser directa. Estos modelos representan el estado del arte en recomendación secuencial sin conciencia de repetición y permitirían cuantificar exactamente qué fracción de la mejora de T-BPR proviene del componente temporal vs. del modelado secuencial.
 
 ---
 
@@ -309,10 +347,10 @@ Para completar el espacio comparativo, se recomienda agregar **SASRec** [Kang y 
 
 Este trabajo presenta **T-BPR**, una extensión de BPR con muestreo negativo dependiente del tiempo que modela explícitamente la dinámica de reconsumo en recomendación musical. Los resultados sobre Last.fm 1K Users confirman que:
 
-1. La señal temporal de recencia es significativamente más informativa que la frecuencia histórica para predecir el próximo consumo (0.09 vs. 0.00 Recall@10).
-2. T-BPR ofrece el mejor balance repeat/explore (Repeat Ratio 0.507 vs. > 0.99 de los competidores), calibrando la recomendación hacia la distribución empírica del dataset.
-3. Las aproximaciones de PISA y RepeatNet reproducen los principios de los modelos originales y son competitivas con la referencia más fuerte (SimpleRepeat-Recency).
-4. Los análisis de sensibilidad e hiperparámetros implementados permiten cuantificar empíricamente el efecto de las decisiones de diseño del modelo.
+1. La señal temporal de recencia es significativamente más informativa que la frecuencia histórica para predecir el próximo consumo (0.09 vs. 0.00 Recall@10), y constituye un baseline extraordinariamente fuerte que T-BPR no logra superar en métricas de ranking (§5.2).
+2. El aporte de T-BPR es la calibración del balance repeat/explore (Repeat Ratio 0.43–0.51 vs. > 0.99 de los competidores), acercando la recomendación a la distribución empírica del dataset a costa de una caída acotada (~19 % nDCG@10) en la precisión de ranking.
+3. Las aproximaciones de PISA y RepeatNet reproducen los principios de los modelos originales con un stack `numpy`/CPU liviano y son competitivas con la referencia más fuerte (SimpleRepeat-Recency).
+4. La búsqueda de hiperparámetros con validación rolling cuantifica empíricamente el efecto de las decisiones de diseño de T-BPR; el análisis de sensibilidad de la ventana $W_u$ queda especificado como protocolo reproducible (§5.3).
 
 El código completo, reproducible y documentado, está disponible en el repositorio del proyecto: <https://github.com/Couyoumdjian13/Analisis-Last.fm-1K-Users>.
 
